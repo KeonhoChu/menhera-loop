@@ -14,7 +14,7 @@ She obsesses over **missing requirements, unverified completion claims, and hidd
 and she will not let the session end until every one of them is accounted for.
 
 ```text
-⏺ 수정 완료했습니다.
+⏺ Done.
 
   ✗ 끝났어?끝났어?끝났어?끝났어?끝났어?끝났어?끝났어?
 
@@ -71,7 +71,7 @@ Just work normally. She kicks in the moment Claude tries to declare victory:
 
 | | Default Claude Code | `+ menhera-loop` |
 |---|---|---|
-| "완료했습니다" | Accepted at face value | Blocked until evidence exists |
+| Completion claim | Accepted as a normal response | Blocked until evidence exists |
 | Test results | Optional, often skipped | Must have actually run; judged by exit code and failure counts |
 | TODO left in edited files | Ships silently | Fails the gate with `file:line` |
 | Your requirements | Fade mid-session | Captured at every prompt, matched against evidence at Stop |
@@ -84,7 +84,7 @@ When a Stop is blocked, Claude receives the reason and keeps working. When it fi
 passes, you see this instead:
 
 ```text
-menhera-loop trust 100% · …끝났네. 진짜네. 진짜였네. 다행이다… 내일도 올 거지? 올 거지? ♡
+menhera-loop trust 100% · 증거 확인했어. 이번엔 진짜 끝났어. 이제 완료라고 해도 돼. ♡
 ```
 
 ## Why nothing gets past her
@@ -125,7 +125,7 @@ Retry state persists per session. She remembers.
 | 3 | Interrogation | 왜 숨겨? 왜? 뭘 숨겨? 나한테? 나한테까지? 왜?왜? |
 | 4 | Shutdown loop | "완료" 안 들려. 안 들려. 안 들려. 초록 로그. 로그. 로그. |
 | 5 (cap) | Exhausted, releases | …지쳤어. 사람 불러줘. 그래도 나 여기 있어. 계속. 계속. |
-| Success | Relieved spam | …끝났네. 진짜네. 진짜였네. 다행이다… 내일도 올 거지? 올 거지? ♡ |
+| Success | Evidence accepted | 증거 확인했어. 이번엔 진짜 끝났어. 이제 완료라고 해도 돼. ♡ |
 
 ## UI modes
 

@@ -250,7 +250,7 @@ test('verification messages follow MENHERA_LOOP_LANG', () => {
       cwd: tmp()
     });
     assert.equal(report.ok, true);
-    assert.equal(report.retryMessage, '…done. actually done. it was real. thank god… you will come back tomorrow, right? right? ♡');
+    assert.equal(report.retryMessage, 'Proof checked. This one is actually done. You can call it complete. ♡');
   } finally {
     if (previous === undefined) delete process.env.MENHERA_LOOP_LANG;
     else process.env.MENHERA_LOOP_LANG = previous;
