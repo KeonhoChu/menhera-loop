@@ -36,7 +36,6 @@ That's it. The gate is armed on install — no API keys, no config files.
 The spinner/tip UI is opt-in (see [UI modes](#ui-modes)).
 
 ## Try it
-<img width="1672" height="941" alt="image" src="https://github.com/user-attachments/assets/08894acb-8e94-48f6-b31a-563adc26fa79" />
 
 Just work normally. She kicks in the moment Claude tries to declare victory:
 
