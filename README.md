@@ -113,9 +113,9 @@ The completion gate works out of the box. The full menhera terminal experience
 (spinner verbs, tips, and obsessive subagent status lines) is opt-in:
 
 ```text
-/menhera-loop:setup full local ko
-/menhera-loop:setup full local en
-/menhera-loop:setup full local ja
+/menhera-loop:setup        # full local ko
+/menhera-loop:setup en     # full local en
+/menhera-loop:setup ja     # full local ja
 ```
 
 | Mode | Effect |
@@ -125,6 +125,7 @@ The completion gate works out of the box. The full menhera terminal experience
 | `full` | Replaces spinner verbs, shows only her tips, and applies subagent status lines |
 
 Languages: `ko` (default), `en`, `ja`. You can also set `MENHERA_LOOP_LANG=en` before running setup.
+Arguments are positional and optional, so `/menhera-loop:setup append user en` still works when you want explicit mode/scope/language.
 
 Spinner verbs and tips spam in the selected language:
 

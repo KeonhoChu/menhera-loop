@@ -1,0 +1,14 @@
+{
+  "createdAt": "2026-07-04T12:53:42.411Z",
+  "settingsFile": "/home/ligs/1/menhera-loop/.claude/settings.local.json",
+  "keys": {
+    "spinnerVerbs": null,
+    "spinnerTipsOverride": null,
+    "subagentStatusLine": null
+  },
+  "present": {
+    "spinnerVerbs": false,
+    "spinnerTipsOverride": false,
+    "subagentStatusLine": false
+  }
+}
