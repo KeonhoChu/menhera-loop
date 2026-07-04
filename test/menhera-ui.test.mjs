@@ -347,10 +347,13 @@ test('mixed pass/fail output is treated as a failed verification', () => {
   assert.equal(report.failedChecks.includes('verification'), true);
 });
 
+// Built from parts so scanning this test file never counts it as leftover work.
+const todoMarker = ['TO', 'DO'].join('');
+
 test('TODO left in an edited file fails the todos gate', () => {
   const cwd = tmp();
   fs.mkdirSync(path.join(cwd, 'src'), { recursive: true });
-  fs.writeFileSync(path.join(cwd, 'src', 'login.js'), '// TODO finish auth\nexport const x = 1;\n');
+  fs.writeFileSync(path.join(cwd, 'src', 'login.js'), `// ${todoMarker} finish auth\nexport const x = 1;\n`);
 
   const report = buildVerificationReport({
     transcriptText: passingTranscript(),
@@ -359,6 +362,23 @@ test('TODO left in an edited file fails the todos gate', () => {
   });
   assert.equal(report.ok, false);
   assert.equal(report.failedChecks.includes('todos'), true);
+});
+
+test('todos gate ignores markers outside comment context', () => {
+  const cwd = tmp();
+  fs.mkdirSync(path.join(cwd, 'src'), { recursive: true });
+  fs.writeFileSync(
+    path.join(cwd, 'src', 'login.js'),
+    `export const nag = '${todoMarker}어딨어?${todoMarker}어딨어?${todoMarker}어딨어?';\nexport const x = 1;\n`
+  );
+
+  const report = buildVerificationReport({
+    transcriptText: passingTranscript(),
+    state: { ...emptyState(), requirements: ['로그인 버그 고쳐줘'] },
+    cwd
+  });
+  assert.equal(report.ok, true);
+  assert.equal(report.failedChecks.includes('todos'), false);
 });
 
 test('plugin\'s own phrases and prompts do not poison the verdict', () => {

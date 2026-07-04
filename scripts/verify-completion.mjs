@@ -18,6 +18,10 @@ const TEST_COMMAND_PATTERNS = [
 ];
 
 const TODO_PATTERN = /\b(TODO|FIXME|XXX|HACK|stub)\b|not implemented|NotImplementedError/i;
+// Only count markers that sit in comment-like context. Bare occurrences in
+// string literals or prose (e.g. this plugin's own 'TODO어딨어?' corpus) are
+// message content, not leftover work.
+const COMMENT_CONTEXT_PATTERN = /(?:^|\s)(?:\/\/|\/\*|\*|#|<!--)/;
 const FAILED_COUNT_PATTERN = /\b([1-9]\d*)\s*(?:tests?\s+)?fail(?:ed|ing|ures?)?\b/i;
 const EDIT_TOOL_PATTERN = /^(Write|Edit|MultiEdit|NotebookEdit)$/;
 
@@ -241,7 +245,7 @@ function scanTodos(editedFiles, cwd) {
     }
     const lines = content.split(/\r?\n/);
     for (let i = 0; i < lines.length; i += 1) {
-      if (TODO_PATTERN.test(lines[i])) {
+      if (COMMENT_CONTEXT_PATTERN.test(lines[i]) && TODO_PATTERN.test(lines[i])) {
         hits.push(`${path.basename(resolved)}:${i + 1}`);
         if (hits.length >= 10) return hits;
       }
