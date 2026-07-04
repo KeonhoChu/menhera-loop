@@ -8,6 +8,7 @@ import test from 'node:test';
 
 import {
   calculateTrust,
+  installSubagentRenderer,
   installUi,
   messageForRetry,
   messagesForLanguage,
@@ -157,7 +158,77 @@ test('UI patch uses the selected language corpus', () => {
   const patch = uiPatchForMode('full', { language: 'en' });
   assert.equal(patch.spinnerVerbs.verbs[0], 'what?what?what?what?what?what?what?what?what?what?');
   assert.equal(patch.spinnerTipsOverride.tips[0], 'what?what?what?what?what?what?what?what?what?what?what?what?');
-  assert.equal(patch.subagentStatusLine.running, '♡ ${agent} · what?what?what?what?what?what?what?what?what?what?what?what?what?what?what?');
+});
+
+test('subagentStatusLine setting uses the schema-valid command form', () => {
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  const patch = uiPatchForMode('full', { env });
+  assert.deepEqual(patch.subagentStatusLine, {
+    type: 'command',
+    command: `node "${path.join(env.MENHERA_LOOP_DATA, 'subagent-status.mjs')}"`
+  });
+});
+
+function runSubagentRenderer({ input, env }) {
+  return spawnSync('node', [path.join(scriptsDir, 'subagent-status.mjs')], {
+    input: typeof input === 'string' ? input : JSON.stringify(input),
+    encoding: 'utf8',
+    env: { ...process.env, ...env }
+  });
+}
+
+test('subagent renderer maps task status to per-language obsessive rows', () => {
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  installSubagentRenderer({ language: 'ko', env });
+  const result = runSubagentRenderer({
+    input: {
+      columns: 200,
+      tasks: [
+        { id: 'a', name: 'explore', status: 'running' },
+        { id: 'b', name: 'executor', status: 'completed' },
+        { id: 'c', name: 'critic', status: 'failed' },
+        { id: 'd', name: 'planner', status: 'pending' }
+      ]
+    },
+    env
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const rows = result.stdout.trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(rows.length, 4);
+  const byId = Object.fromEntries(rows.map(row => [row.id, row.content]));
+  assert.match(byId.a, /♡ explore · 뭐해\?/);
+  assert.match(byId.b, /끝났다고\?/);
+  assert.match(byId.c, /실패했어\?/);
+  assert.match(byId.d, /왜답안해\?/);
+  assert.doesNotMatch(result.stdout, /\$\{agent\}/);
+});
+
+test('subagent renderer truncates rows to the available columns', () => {
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  installSubagentRenderer({ language: 'ko', env });
+  const result = runSubagentRenderer({
+    input: { columns: 20, tasks: [{ id: 'a', name: 'explore', status: 'running' }] },
+    env
+  });
+  const row = JSON.parse(result.stdout.trim());
+  let width = 0;
+  for (const char of row.content) width += char.codePointAt(0) > 0x7f ? 2 : 1;
+  assert.ok(width <= 20, `row width ${width} exceeds 20 columns`);
+});
+
+test('subagent renderer stays silent without config or with garbage input', () => {
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  const noConfig = runSubagentRenderer({
+    input: { columns: 80, tasks: [{ id: 'a', status: 'running' }] },
+    env
+  });
+  assert.equal(noConfig.status, 0);
+  assert.equal(noConfig.stdout.trim(), '');
+
+  installSubagentRenderer({ language: 'ko', env });
+  const garbage = runSubagentRenderer({ input: 'not-json{', env });
+  assert.equal(garbage.status, 0);
+  assert.equal(garbage.stdout.trim(), '');
 });
 
 test('setup parser accepts language from args or environment', () => {
@@ -190,25 +261,31 @@ test('message corpus stays short and avoids disallowed expressions', () => {
 
 test('install preserves unrelated settings and uninstall restores prior UI keys', () => {
   const dir = tmp();
+  const env = { MENHERA_LOOP_DATA: tmp() };
   const settingsFile = path.join(dir, 'settings.json');
   fs.writeFileSync(settingsFile, JSON.stringify({
     model: 'sonnet',
     spinnerVerbs: { mode: 'append', verbs: ['old'] }
   }, null, 2));
 
-  installUi({ settingsFile, mode: 'full' });
+  installUi({ settingsFile, mode: 'full', env });
   const installed = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
   assert.equal(installed.model, 'sonnet');
   assert.equal(installed.spinnerVerbs.mode, 'replace');
   assert.equal(installed.spinnerVerbs.verbs[0], spinnerVerbs[0]);
+  assert.equal(installed.subagentStatusLine.type, 'command');
+  assert.ok(fs.existsSync(path.join(env.MENHERA_LOOP_DATA, 'subagent-status.mjs')));
+  assert.ok(fs.existsSync(path.join(env.MENHERA_LOOP_DATA, 'ui-config.json')));
 
-  const uninstallResult = uninstallUi({ settingsFile });
+  const uninstallResult = uninstallUi({ settingsFile, env });
   const restored = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
   assert.equal(uninstallResult.restored, true);
   assert.deepEqual(restored, {
     model: 'sonnet',
     spinnerVerbs: { mode: 'append', verbs: ['old'] }
   });
+  assert.equal(fs.existsSync(path.join(env.MENHERA_LOOP_DATA, 'subagent-status.mjs')), false);
+  assert.equal(fs.existsSync(path.join(env.MENHERA_LOOP_DATA, 'ui-config.json')), false);
 });
 
 test('setup parser accepts positional mode and scope for command UX', () => {

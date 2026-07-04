@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { dataDir } from './state.mjs';
 
 export const messageCorpora = {
   ko: {
@@ -224,7 +226,7 @@ export function settingsPathForScope(scope, env = process.env) {
   return path.join(process.cwd(), '.claude', 'settings.local.json');
 }
 
-export function uiPatchForMode(mode, { language } = {}) {
+export function uiPatchForMode(mode, { language, env = process.env } = {}) {
   if (!MODES.has(mode)) {
     throw new Error(`Unsupported mode: ${mode}`);
   }
@@ -239,8 +241,38 @@ export function uiPatchForMode(mode, { language } = {}) {
       excludeDefault: mode === 'full',
       tips: corpus.spinnerTips
     },
-    subagentStatusLine: corpus.subagentStatusLine
+    // Claude Code's subagentStatusLine schema only accepts {type:"command",
+    // command}; the per-status message templates live in ui-config.json and
+    // are rendered by the copied subagent-status.mjs script.
+    subagentStatusLine: subagentStatusLineSetting(env)
   };
+}
+
+const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
+
+export function subagentRendererPaths(env = process.env) {
+  const dir = dataDir(env);
+  return {
+    configFile: path.join(dir, 'ui-config.json'),
+    rendererFile: path.join(dir, 'subagent-status.mjs')
+  };
+}
+
+export function subagentStatusLineSetting(env = process.env) {
+  return { type: 'command', command: `node "${subagentRendererPaths(env).rendererFile}"` };
+}
+
+export function installSubagentRenderer({ language, env = process.env }) {
+  const corpus = messagesForLanguage(language);
+  const { configFile, rendererFile } = subagentRendererPaths(env);
+  fs.mkdirSync(path.dirname(configFile), { recursive: true });
+  writeJsonFile(configFile, {
+    language: normalizeLanguage(language),
+    updatedAt: new Date().toISOString(),
+    subagentStatusLine: corpus.subagentStatusLine
+  });
+  fs.copyFileSync(path.join(SCRIPTS_DIR, 'subagent-status.mjs'), rendererFile);
+  return { configFile, rendererFile };
 }
 
 export function readJsonFile(file) {
@@ -261,9 +293,9 @@ function backupFileFor(settingsFile) {
   return path.join(dir, `${safeName}.ui-backup.json`);
 }
 
-export function installUi({ settingsFile, mode, language }) {
+export function installUi({ settingsFile, mode, language, env = process.env }) {
   const current = readJsonFile(settingsFile);
-  const patch = uiPatchForMode(mode, { language });
+  const patch = uiPatchForMode(mode, { language, env });
   const backupFile = backupFileFor(settingsFile);
 
   if (mode === 'hooks-only') {
@@ -289,12 +321,13 @@ export function installUi({ settingsFile, mode, language }) {
     writeJsonFile(backupFile, backup);
   }
 
+  const renderer = installSubagentRenderer({ language, env });
   const next = { ...current, ...patch };
   writeJsonFile(settingsFile, next);
-  return { settingsFile, backupFile, mode, changedKeys: Object.keys(patch) };
+  return { settingsFile, backupFile, mode, changedKeys: Object.keys(patch), ...renderer };
 }
 
-export function uninstallUi({ settingsFile }) {
+export function uninstallUi({ settingsFile, env = process.env }) {
   const current = readJsonFile(settingsFile);
   const backupFile = backupFileFor(settingsFile);
   if (!fs.existsSync(backupFile)) {
@@ -308,6 +341,13 @@ export function uninstallUi({ settingsFile }) {
     else delete next[key];
   }
   writeJsonFile(settingsFile, next);
+  const { configFile, rendererFile } = subagentRendererPaths(env);
+  try {
+    fs.rmSync(configFile, { force: true });
+    fs.rmSync(rendererFile, { force: true });
+  } catch {
+    // Leftover renderer files are harmless once the settings key is restored.
+  }
   return { settingsFile, backupFile, restored: true, restoredKeys: ['spinnerVerbs', 'spinnerTipsOverride', 'subagentStatusLine'] };
 }
 

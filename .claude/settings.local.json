@@ -30,9 +30,14 @@
     ]
   },
   "subagentStatusLine": {
-    "running": "♡ ${agent} · 뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?뭐해?",
-    "waiting": "♡ ${agent} · 왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?",
-    "completed": "♡ ${agent} · 끝났다고?끝났다고?끝났다고?끝났다고?끝났다고?끝났다고?끝났다고?끝났다고?끝났다고?끝났다고?끝났다고?끝났다고?",
-    "failed": "♡ ${agent} · 실패했어?실패했어?실패했어?실패했어?실패했어?실패했어?실패했어?실패했어?실패했어?실패했어?실패했어?실패했어?실패했어?"
+    "type": "command",
+    "command": "node \"/home/ligs/.claude/menhera-loop/subagent-status.mjs\""
+  },
+  "permissions": {
+    "allow": [
+      "Bash(claude plugin *)",
+      "Read(//home/ligs/.claude/**)",
+      "Bash(npm run *)"
+    ]
   }
 }

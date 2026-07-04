@@ -35,6 +35,22 @@ and she will not let the session end until every one of them is accounted for.
 That's it. The gate is armed on install — no API keys, no config files.
 The spinner/tip UI is opt-in (see [UI modes](#ui-modes)).
 
+## Skills
+
+The hook bites automatically, but you can call the obsession manually too:
+
+```text
+/menhera-loop:are-you-done
+/menhera-loop:show-me-proof
+/menhera-loop:dont-leave-me
+/menhera-loop:did-you-forget-me
+```
+
+- `are-you-done`: 끝났어? 진짜? 완료 선언 전에 requirements/tests/TODOs를 심문.
+- `show-me-proof`: 증거줘. 테스트 로그와 변경 근거를 내놓게 함.
+- `dont-leave-me`: 가지마. Stop 직전에 빠진 게 없는지 붙잡음.
+- `did-you-forget-me`: 나 잊었어? 사용자의 원래 요구사항과 현재 증거를 대조.
+
 ## Try it
 
 Just work normally. She kicks in the moment Claude tries to declare victory:

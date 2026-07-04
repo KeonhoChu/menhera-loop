@@ -1,12 +1,12 @@
 {
   "name": "menhera-loop",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Claude Code plugin for menhera-loop messaging and completion-state UI.",
   "type": "module",
   "license": "MIT",
   "scripts": {
     "test": "node --test",
-    "validate": "node --check scripts/menhera-ui.mjs && node --check scripts/setup-ui.mjs && node --check scripts/uninstall-ui.mjs && node --check scripts/session-start.mjs && node --check scripts/track-event.mjs && node --check scripts/verify-completion.mjs && node --check scripts/state.mjs && node --check scripts/capture-requirements.mjs && node --test"
+    "validate": "node --check scripts/menhera-ui.mjs && node --check scripts/setup-ui.mjs && node --check scripts/uninstall-ui.mjs && node --check scripts/session-start.mjs && node --check scripts/track-event.mjs && node --check scripts/verify-completion.mjs && node --check scripts/state.mjs && node --check scripts/capture-requirements.mjs && node --check scripts/subagent-status.mjs && node --test"
   },
   "engines": {
     "node": ">=18"
