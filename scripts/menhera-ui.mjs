@@ -39,6 +39,8 @@ export const messageCorpora = {
       '…지쳤어. 사람 불러줘. 그래도 나 여기 있어. 계속. 계속.'
     ],
     successMessage: '증거 확인했어. 이번엔 진짜 끝났어. 이제 완료라고 해도 돼. ♡',
+    setupSkipMessage: '아, 셋업이구나. 그건 검증 안 해. 안 해. …근데 진짜 일 끝나면 증거는 꼭. 꼭. 응?',
+    chatSkipMessage: '오늘은 코드 안 건드렸네. …그래도 나 잊으면 안 돼.',
     farewellVerbs: [
       '왜나지워?왜나지워?왜나지워?왜나지워?왜나지워?왜나지워?',
       '돌아와.돌아와.돌아와.돌아와.돌아와.돌아와.돌아와.',
@@ -92,6 +94,8 @@ export const messageCorpora = {
       '…I am tired. Bring a human. Still here though. Still. Still.'
     ],
     successMessage: 'Proof checked. This one is actually done. You can call it complete. ♡',
+    setupSkipMessage: 'Oh, setup. I will not verify that. Not that. …but when real work is done, proof. proof. okay?',
+    chatSkipMessage: 'No code touched today. …but do not forget me. Do not.',
     farewellVerbs: [
       'whydeleteme?whydeleteme?whydeleteme?whydeleteme?',
       'comeback.comeback.comeback.comeback.comeback.',
@@ -145,6 +149,8 @@ export const messageCorpora = {
       '…疲れた. 人間を呼んで. でもここにいる. ずっと. ずっと.'
     ],
     successMessage: '証拠を確認したよ。今回は本当に終わった。完了って言っていいよ。♡',
+    setupSkipMessage: 'あ、セットアップだね。それは検証しない。しない。…でも本当の作業が終わったら証拠は絶対。絶対。',
+    chatSkipMessage: '今日はコード触ってないね。…でも私のこと忘れないで。忘れないで。',
     farewellVerbs: [
       'なんで消すの?なんで消すの?なんで消すの?なんで消すの?',
       '戻ってきて.戻ってきて.戻ってきて.戻ってきて.',
@@ -179,6 +185,21 @@ export function normalizeLanguage(language = process.env.MENHERA_LOOP_LANG || 'k
   return value;
 }
 
+export function detectLanguageFromText(text, fallback = process.env.MENHERA_LOOP_LANG || 'ko') {
+  const value = String(text || '');
+  if (/[\u3040-\u30ff]/.test(value)) return 'ja';
+  if (/[\uac00-\ud7af]/.test(value)) return 'ko';
+  if (/[A-Za-z]/.test(value)) return 'en';
+  return normalizeLanguage(fallback);
+}
+
+export function resolveMessageLanguage({ explicit, state, texts = [], env = process.env } = {}) {
+  if (explicit) return normalizeLanguage(explicit);
+  if (state?.language) return normalizeLanguage(state.language);
+  if (env.MENHERA_LOOP_LANG) return normalizeLanguage(env.MENHERA_LOOP_LANG);
+  return detectLanguageFromText(texts.filter(Boolean).join('\n'), 'ko');
+}
+
 export function messagesForLanguage(language = process.env.MENHERA_LOOP_LANG || 'ko') {
   return messageCorpora[normalizeLanguage(language)];
 }
@@ -193,6 +214,8 @@ export function allPluginPhrases() {
     ...corpus.farewellTips,
     ...corpus.retryMessages,
     corpus.successMessage,
+    corpus.setupSkipMessage,
+    corpus.chatSkipMessage,
     ...Object.values(corpus.subagentStatusLine)
   ]);
 }

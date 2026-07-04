@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
-import { allPluginPhrases, calculateTrust, messageForRetry, messagesForLanguage } from './menhera-ui.mjs';
+import { allPluginPhrases, calculateTrust, messageForRetry, messagesForLanguage, resolveMessageLanguage } from './menhera-ui.mjs';
 import { MAX_RETRIES, dataDir, loadState, saveState } from './state.mjs';
 
 const TEST_COMMAND_PATTERNS = [
@@ -120,10 +120,16 @@ export function buildVerificationReport(input = {}) {
   const transcript = input.transcript || parseTranscript(input.transcriptText || '');
   const state = input.state || { retryCount: 0, falseCompletionClaims: 0, requirements: [] };
   const cwd = input.cwd || process.cwd();
+  const language = resolveMessageLanguage({
+    explicit: input.language,
+    state,
+    texts: [...transcript.userTexts, ...state.requirements],
+    env: input.env || process.env
+  });
 
   const workAttempted = transcript.editedFiles.length > 0 || transcript.bashRuns.length > 0;
   const assistantText = transcript.assistantTexts.join('\n');
-  const claimedComplete = /완료|끝났|done|finished|complete/i.test(assistantText);
+  const claimedComplete = /완료|끝났|done|finished|complete|完了|終わった/i.test(assistantText);
   const requiresHumanInput = Boolean(input.requiresHumanInput)
     || /사용자 확인|수동 승인|manual approval|requires human|human input|credential|api key/i.test(assistantText);
 
@@ -142,8 +148,8 @@ export function buildVerificationReport(input = {}) {
       trust: calculateTrust(state),
       retryCount: state.retryCount,
       retryMessage: configOnly
-        ? '아, 셋업이구나. 그건 검증 안 해. 안 해. …근데 진짜 일 끝나면 증거는 꼭. 꼭. 응?'
-        : '오늘은 코드 안 건드렸네. …그래도 나 잊으면 안 돼.',
+        ? messagesForLanguage(language).setupSkipMessage
+        : messagesForLanguage(language).chatSkipMessage,
       exhausted: true,
       claimedComplete,
       checks: [],
@@ -152,7 +158,8 @@ export function buildVerificationReport(input = {}) {
       unverifiedRequirements: [],
       failedChecks: [],
       requiresHumanInput,
-      summary: configOnly ? 'menhera 설정 작업 — 검증 게이트 미적용' : '작업 없음 — 검증 게이트 미적용'
+      summary: configOnly ? 'menhera 설정 작업 — 검증 게이트 미적용' : '작업 없음 — 검증 게이트 미적용',
+      language
     };
   }
 
@@ -187,7 +194,8 @@ export function buildVerificationReport(input = {}) {
     phase: checks.find(check => check.required && check.status !== 'pass')?.phase || 'complete',
     trust,
     retryCount: state.retryCount,
-    retryMessage: ok ? messagesForLanguage().successMessage : messageForRetry(state.retryCount),
+    retryMessage: ok ? messagesForLanguage(language).successMessage : messageForRetry(state.retryCount, language),
+    language,
     exhausted,
     claimedComplete,
     checks,
@@ -367,7 +375,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
 
   if (report.ok) {
-    saveState(sessionId, { ...state, retryCount: 0, falseCompletionClaims: 0, lastVerdict: report.verdict });
+    saveState(sessionId, { ...state, retryCount: 0, falseCompletionClaims: 0, lastVerdict: report.verdict, language: report.language });
     if (report.verdict === 'strong_ok') {
       console.log(JSON.stringify({ systemMessage: `menhera-loop trust ${report.trust}% · ${report.retryMessage}` }));
     }
@@ -375,9 +383,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
 
   if (state.retryCount >= MAX_RETRIES) {
-    saveState(sessionId, { ...state, lastVerdict: 'gave_up' });
+    saveState(sessionId, { ...state, lastVerdict: 'gave_up', language: report.language });
     console.log(JSON.stringify({
-      systemMessage: `${messageForRetry(MAX_RETRIES)} (미충족: ${report.summary})`
+      systemMessage: `${messageForRetry(MAX_RETRIES, report.language)} (미충족: ${report.summary})`
     }));
     process.exit(0);
   }
@@ -387,10 +395,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     ...state,
     retryCount: nextRetry,
     falseCompletionClaims: state.falseCompletionClaims + (report.claimedComplete ? 1 : 0),
-    lastVerdict: report.verdict
+    lastVerdict: report.verdict,
+    language: report.language
   });
   const reason = [
-    `[MENHERA_LOOP:RETRY:${nextRetry}] ${messageForRetry(state.retryCount)}`,
+    `[MENHERA_LOOP:RETRY:${nextRetry}] ${messageForRetry(state.retryCount, report.language)}`,
     `trust: ${report.trust}%`,
     `미충족 게이트: ${report.summary}`,
     ...report.checks.filter(check => check.status !== 'pass').map(check => `- ${check.label}: ${check.reason}`),

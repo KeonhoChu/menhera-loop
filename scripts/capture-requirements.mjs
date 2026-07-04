@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { loadState, saveState } from './state.mjs';
+import { detectLanguageFromText } from './menhera-ui.mjs';
 
 export function requirementsFromPrompt(prompt) {
   const text = String(prompt || '').trim();
@@ -44,7 +45,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (captured.length > 0) {
     const state = loadState(sessionId);
     const merged = [...new Set([...state.requirements, ...captured])].slice(-50);
-    saveState(sessionId, { ...state, requirements: merged });
+    saveState(sessionId, { ...state, requirements: merged, language: detectLanguageFromText(input.prompt, state.language || process.env.MENHERA_LOOP_LANG || 'ko') });
   }
   process.exit(0);
 }

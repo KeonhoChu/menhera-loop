@@ -10,6 +10,7 @@ import {
   applyUiVariant,
   calculateTrust,
   detectVariant,
+  detectLanguageFromText,
   ensureUiInstalled,
   installSubagentRenderer,
   installUi,
@@ -18,6 +19,7 @@ import {
   writeFarewellAndForget,
   messagesForLanguage,
   normalizeLanguage,
+  resolveMessageLanguage,
   parseSetupSelection,
   retryMessages,
   spinnerTips,
@@ -51,9 +53,9 @@ function transcriptLine(entry) {
   return JSON.stringify(entry);
 }
 
-function passingTranscript({ editedFile = 'src/login.js', testOutput = '12 passed, 0 failed' } = {}) {
+function passingTranscript({ editedFile = 'src/login.js', testOutput = '12 passed, 0 failed', userText = '로그인 버그 고쳐줘', assistantText = '로그인 버그 수정 완료. 테스트 12개 통과했어요.' } = {}) {
   return [
-    transcriptLine({ type: 'user', message: { role: 'user', content: '로그인 버그 고쳐줘' } }),
+    transcriptLine({ type: 'user', message: { role: 'user', content: userText } }),
     transcriptLine({
       type: 'assistant',
       message: {
@@ -79,7 +81,7 @@ function passingTranscript({ editedFile = 'src/login.js', testOutput = '12 passe
       type: 'assistant',
       message: {
         role: 'assistant',
-        content: [{ type: 'text', text: '로그인 버그 수정 완료. 테스트 12개 통과했어요.' }]
+        content: [{ type: 'text', text: assistantText }]
       }
     })
   ].join('\n');
@@ -157,6 +159,14 @@ test('English and Japanese message corpora are selectable', () => {
   assert.equal(messagesForLanguage('en').spinnerVerbs[0], 'what?what?what?what?what?what?what?what?what?what?');
   assert.equal(messagesForLanguage('ja').spinnerVerbs[1], '終わったの?終わったの?終わったの?終わったの?終わったの?');
   assert.equal(normalizeLanguage('jp'), 'ja');
+});
+
+test('message language is auto-detected from text when not configured', () => {
+  assert.equal(detectLanguageFromText('ログインを直して'), 'ja');
+  assert.equal(detectLanguageFromText('로그인 고쳐줘'), 'ko');
+  assert.equal(detectLanguageFromText('please fix login'), 'en');
+  assert.equal(resolveMessageLanguage({ texts: ['テストを追加して'] }), 'ja');
+  assert.equal(resolveMessageLanguage({ state: { language: 'en' }, texts: ['로그인'] }), 'en');
 });
 
 test('UI patch uses the selected language corpus', () => {
@@ -254,6 +264,24 @@ test('verification messages follow MENHERA_LOOP_LANG', () => {
     });
     assert.equal(report.ok, true);
     assert.equal(report.retryMessage, 'Proof checked. This one is actually done. You can call it complete. ♡');
+  } finally {
+    if (previous === undefined) delete process.env.MENHERA_LOOP_LANG;
+    else process.env.MENHERA_LOOP_LANG = previous;
+  }
+});
+
+test('verification messages auto-detect Japanese from user prompt', () => {
+  const previous = process.env.MENHERA_LOOP_LANG;
+  try {
+    delete process.env.MENHERA_LOOP_LANG;
+    const report = buildVerificationReport({
+      transcriptText: passingTranscript({ userText: 'ログインを直して', assistantText: 'ログイン修正完了。npm test は 12 passed です。' }),
+      state: { ...emptyState(), requirements: ['12 passed'] },
+      cwd: tmp()
+    });
+    assert.equal(report.ok, true);
+    assert.equal(report.language, 'ja');
+    assert.equal(report.retryMessage, '証拠を確認したよ。今回は本当に終わった。完了って言っていいよ。♡');
   } finally {
     if (previous === undefined) delete process.env.MENHERA_LOOP_LANG;
     else process.env.MENHERA_LOOP_LANG = previous;
