@@ -105,7 +105,7 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/scripts/verify-completion.mjs"
             ],
-            "statusMessage": "끝났어?끝났어?끝났어?끝났어?끝났어?끝났어?"
+            "statusMessage": "끝났어?끝났어?끝났어?끝났어?끝났어?끝났어?",
             "timeout": 30
           }
         ]
