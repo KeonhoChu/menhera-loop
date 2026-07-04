@@ -37,19 +37,23 @@ The spinner/tip UI is opt-in (see [UI modes](#ui-modes)).
 
 ## Skills
 
-The hook bites automatically, but you can call the obsession manually too:
+The hook bites automatically, but you can call the obsession manually too. These skills are deliberately separated so each one nags about a different failure mode:
 
 ```text
-/menhera-loop:are-you-done
-/menhera-loop:show-me-proof
-/menhera-loop:dont-leave-me
-/menhera-loop:did-you-forget-me
+/menhera-loop:are-you-done       # final completion verdict
+/menhera-loop:show-me-proof      # evidence/log interrogation
+/menhera-loop:dont-leave-me      # pre-Stop door guard
+/menhera-loop:did-you-forget-me  # requirement drift check
 ```
 
-- `are-you-done`: 끝났어? 진짜? 완료 선언 전에 requirements/tests/TODOs를 심문.
-- `show-me-proof`: 증거줘. 테스트 로그와 변경 근거를 내놓게 함.
-- `dont-leave-me`: 가지마. Stop 직전에 빠진 게 없는지 붙잡음.
-- `did-you-forget-me`: 나 잊었어? 사용자의 원래 요구사항과 현재 증거를 대조.
+| Skill | Role | Verdicts |
+|---|---|---|
+| `are-you-done` | 끝났어? 진짜? Final judge for requirements, changes, green verification, TODOs, and blockers. | `끝났어` / `아직이야` / `사람불러` |
+| `show-me-proof` | 증거줘. 증거줘. Extracts concrete changes, requirement evidence, green logs, weak spots, and unresolved work. | `믿을게` / `못믿어` |
+| `dont-leave-me` | 가지마. Stop 직전에 chat-only/work-attempted 상태와 missing gates를 붙잡음. | `놔줄게` / `못가` / `사람 불러줘` |
+| `did-you-forget-me` | 나 잊었어? User requirements vs current evidence; catches assistant-invented scope. | `기억했어` / `까먹었어` / `사람차례` |
+
+Skills match Korean, English, or Japanese user input and keep the same obsessive repetition without insults, threats, self-harm, or abuse.
 
 ## Try it
 
@@ -193,7 +197,7 @@ Menhera, but principled. She will never:
 ## Development
 
 ```bash
-npm run validate        # syntax check all scripts + 28 tests
+npm run validate        # syntax check all scripts + 38 tests
 claude plugin validate .
 ```
 
