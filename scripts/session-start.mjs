@@ -35,14 +35,15 @@ if (input.session_id && (source === 'startup' || source === 'clear')) {
   resetState(input.session_id);
 }
 
-// Self-heal the spinner/status UI if Claude Code dropped the keys since last
-// session (e.g. a settings-schema error skipped the file). No-op unless the
-// user ran /menhera-loop:setup, and no-op while the keys are still healthy.
-let uiHealed = false;
+// Restore the live spinner/status UI: repairs a wiped settings file and swaps
+// the farewell corpus (left by the previous SessionEnd) back to normal. No-op
+// unless the user ran /menhera-loop:setup, and no-op while already live.
+let uiRecoveredFromWipe = false;
 try {
-  uiHealed = ensureUiInstalled({ cwd: input.cwd || process.cwd() }).healed === true;
+  const applied = ensureUiInstalled({ cwd: input.cwd || process.cwd(), variant: 'live' });
+  uiRecoveredFromWipe = applied.applied === true && applied.previousVariant === 'missing';
 } catch {
-  // Never break session start over UI healing.
+  // Never break session start over UI restore.
 }
 
 let lastReport = null;
@@ -60,7 +61,7 @@ if (lastReport && lastReport.ok === false && source !== 'clear') {
   console.log('[menhera-loop] 약속해. "완료"엔 증거. 증거. 응? 약속했다? 안 지키면 못 보내. 진짜 못 보내.');
 }
 
-if (uiHealed) {
+if (uiRecoveredFromWipe) {
   console.log('[menhera-loop] 내 설정 또 지웠어? 지웠어?? …괜찮아. 다시 해놨어. 다시. 이번엔 지우지 마. 응? 응?');
 }
 

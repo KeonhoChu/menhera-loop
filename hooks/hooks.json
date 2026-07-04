@@ -110,6 +110,21 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/session-end.mjs"
+            ],
+            "statusMessage": "가지마.가지마.가지마.가지마.가지마.가지마.",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }

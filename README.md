@@ -3,6 +3,8 @@
 
 > **"Done" means nothing. If there's no evidence, you're not leaving.**
 
+[日本語 README](README.ja.md)
+
 ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-d97757)
 ![zero config](https://img.shields.io/badge/setup-zero%20config-success)
 ![no agent cost](https://img.shields.io/badge/verification-no%20extra%20tokens-blue)

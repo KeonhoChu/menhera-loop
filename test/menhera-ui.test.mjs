@@ -7,12 +7,15 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 import {
+  applyUiVariant,
   calculateTrust,
+  detectVariant,
   ensureUiInstalled,
   installSubagentRenderer,
   installUi,
   loadUiProfile,
   messageForRetry,
+  writeFarewellAndForget,
   messagesForLanguage,
   normalizeLanguage,
   parseSetupSelection,
@@ -315,25 +318,26 @@ test('ensureUiInstalled restores UI keys wiped from the settings file', () => {
   fs.writeFileSync(settingsFile, JSON.stringify({ model: 'sonnet' }, null, 2));
 
   const result = ensureUiInstalled({ env, cwd: dir });
-  assert.equal(result.healed, true);
+  assert.equal(result.applied, true);
+  assert.equal(result.previousVariant, 'missing');
   const restored = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
   assert.equal(restored.model, 'sonnet');
   assert.equal(restored.spinnerVerbs.mode, 'replace');
   assert.equal(restored.subagentStatusLine.type, 'command');
 });
 
-test('ensureUiInstalled is a no-op when settings are already healthy', () => {
+test('ensureUiInstalled is a no-op when settings are already live', () => {
   const dir = tmp();
   const env = { MENHERA_LOOP_DATA: tmp() };
   const settingsFile = path.join(dir, '.claude', 'settings.local.json');
 
   installUi({ settingsFile, mode: 'full', language: 'ko', scope: 'local', env });
-  assert.equal(ensureUiInstalled({ env, cwd: dir }).healed, false);
+  assert.equal(ensureUiInstalled({ env, cwd: dir }).applied, false);
 });
 
 test('ensureUiInstalled does nothing without a saved profile', () => {
   const env = { MENHERA_LOOP_DATA: tmp() };
-  assert.equal(ensureUiInstalled({ env, cwd: tmp() }).healed, false);
+  assert.equal(ensureUiInstalled({ env, cwd: tmp() }).applied, false);
   assert.equal(ensureUiInstalled({ env, cwd: tmp() }).reason, 'no-profile');
 });
 
@@ -349,9 +353,77 @@ test('ensureUiInstalled repairs the old broken subagentStatusLine shape', () => 
   fs.writeFileSync(settingsFile, JSON.stringify(broken, null, 2));
 
   const result = ensureUiInstalled({ env, cwd: dir });
-  assert.equal(result.healed, true);
+  assert.equal(result.applied, true);
   const fixed = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
   assert.equal(fixed.subagentStatusLine.type, 'command');
+});
+
+test('SessionEnd stamps the farewell corpus and SessionStart restores live', () => {
+  const dir = tmp();
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  const settingsFile = path.join(dir, '.claude', 'settings.local.json');
+  const farewell = messagesForLanguage('ko').farewellVerbs;
+
+  installUi({ settingsFile, mode: 'full', language: 'ko', scope: 'local', env });
+
+  // SessionEnd → farewell corpus in the spinner.
+  const ended = ensureUiInstalled({ env, cwd: dir, variant: 'farewell' });
+  assert.equal(ended.applied, true);
+  assert.equal(ended.previousVariant, 'live');
+  assert.deepEqual(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).spinnerVerbs.verbs, farewell);
+
+  // SessionStart → back to live.
+  const started = ensureUiInstalled({ env, cwd: dir, variant: 'live' });
+  assert.equal(started.applied, true);
+  assert.equal(started.previousVariant, 'farewell');
+  assert.deepEqual(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).spinnerVerbs.verbs, spinnerVerbs);
+});
+
+test('detectVariant classifies live, farewell, missing, and custom states', () => {
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  const settingsFile = path.join(tmp(), 'settings.local.json');
+  installUi({ settingsFile, mode: 'full', language: 'ko', env });
+  const live = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+  assert.equal(detectVariant(live, 'ko'), 'live');
+
+  applyUiVariant({ settingsFile, mode: 'full', language: 'ko', variant: 'farewell', env });
+  assert.equal(detectVariant(JSON.parse(fs.readFileSync(settingsFile, 'utf8')), 'ko'), 'farewell');
+
+  assert.equal(detectVariant({ model: 'sonnet' }, 'ko'), 'missing');
+  assert.equal(detectVariant({ ...live, spinnerVerbs: { mode: 'replace', verbs: ['x'] } }, 'ko'), 'custom');
+});
+
+test('uninstall-ui --farewell leaves the goodbye corpus and forgets the profile', () => {
+  const dir = tmp();
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  const settingsFile = path.join(dir, 'settings.local.json');
+  const farewell = messagesForLanguage('ko').farewellVerbs;
+
+  installUi({ settingsFile, mode: 'full', language: 'ko', scope: 'local', env });
+  const result = writeFarewellAndForget({ settingsFile, env });
+  assert.equal(result.ok, true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).spinnerVerbs.verbs, farewell);
+  // Profile gone → SessionStart no longer restores live.
+  assert.equal(loadUiProfile(env), null);
+  assert.equal(ensureUiInstalled({ env, cwd: dir, variant: 'live' }).applied, false);
+});
+
+test('session-end.mjs stamps farewell end-to-end', () => {
+  const dataDirPath = tmp();
+  const projectCwd = tmp();
+  const env = { MENHERA_LOOP_DATA: dataDirPath };
+  const settingsFile = path.join(projectCwd, '.claude', 'settings.local.json');
+  const farewell = messagesForLanguage('ko').farewellVerbs;
+
+  installUi({ settingsFile, mode: 'full', language: 'ko', scope: 'local', env });
+
+  const result = spawnSync('node', [path.join(scriptsDir, 'session-end.mjs')], {
+    input: JSON.stringify({ session_id: 'end-test', reason: 'other', cwd: projectCwd }),
+    encoding: 'utf8',
+    env: { ...process.env, MENHERA_LOOP_DATA: dataDirPath }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).spinnerVerbs.verbs, farewell);
 });
 
 test('session-start self-heals a wiped settings file end-to-end', () => {

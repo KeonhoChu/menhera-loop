@@ -189,10 +189,23 @@ export function allPluginPhrases() {
   return Object.values(messageCorpora).flatMap(corpus => [
     ...corpus.spinnerVerbs,
     ...corpus.spinnerTips,
+    ...corpus.farewellVerbs,
+    ...corpus.farewellTips,
     ...corpus.retryMessages,
     corpus.successMessage,
     ...Object.values(corpus.subagentStatusLine)
   ]);
+}
+
+// The spinner/tips corpus has two variants: 'live' (the normal obsessive
+// nagging while installed) and 'farewell' (왜나지워/돌아와, left behind when the
+// plugin is removed). SessionStart applies live; SessionEnd applies farewell.
+export function corpusForVariant(language, variant = 'live') {
+  const corpus = messagesForLanguage(language);
+  if (variant === 'farewell') {
+    return { verbs: corpus.farewellVerbs, tips: corpus.farewellTips };
+  }
+  return { verbs: corpus.spinnerVerbs, tips: corpus.spinnerTips };
 }
 
 const MODES = new Set(['hooks-only', 'append', 'full']);
@@ -298,12 +311,39 @@ export function uiSettingsHealthy(settings, mode) {
   return Boolean(line) && line.type === 'command' && typeof line.command === 'string';
 }
 
-// Called on every SessionStart: if the user opted into the UI but the keys are
-// missing or in the old broken shape, restore them from the saved profile.
-export function ensureUiInstalled({ env = process.env, cwd = process.cwd() } = {}) {
+function arraysEqual(a, b) {
+  return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+// Classify what the settings file currently holds so SessionStart/SessionEnd
+// only rewrite when the variant actually needs to change.
+export function detectVariant(settings, language) {
+  if (!uiSettingsHealthy(settings, 'full')) return 'missing';
+  const corpus = messagesForLanguage(language);
+  const verbs = settings.spinnerVerbs?.verbs;
+  if (arraysEqual(verbs, corpus.spinnerVerbs)) return 'live';
+  if (arraysEqual(verbs, corpus.farewellVerbs)) return 'farewell';
+  return 'custom';
+}
+
+// Merge the chosen variant's spinner/tips into the settings file without
+// touching the backup or profile. Refreshes the subagent renderer for 'live'.
+export function applyUiVariant({ settingsFile, mode, language, variant = 'live', env = process.env }) {
+  const current = readJsonFile(settingsFile);
+  const patch = uiPatchForMode(mode, { language, env, variant });
+  if (variant === 'live') installSubagentRenderer({ language, env });
+  writeJsonFile(settingsFile, { ...current, ...patch });
+  return { settingsFile, variant };
+}
+
+// Called on every SessionStart (variant 'live') and SessionEnd (variant
+// 'farewell'). No-op unless the user ran setup. Applies the variant only when
+// the current state differs, so live sessions stay normal and the farewell is
+// what lingers once the plugin is removed.
+export function ensureUiInstalled({ env = process.env, cwd = process.cwd(), variant = 'live' } = {}) {
   const profile = loadUiProfile(env);
-  if (!profile) return { healed: false, reason: 'no-profile' };
-  if (profile.mode === 'hooks-only') return { healed: false, reason: 'hooks-only' };
+  if (!profile) return { applied: false, reason: 'no-profile' };
+  if (profile.mode === 'hooks-only') return { applied: false, reason: 'hooks-only' };
 
   let settingsFile = profile.settingsFile;
   if (profile.scope) {
@@ -313,34 +353,55 @@ export function ensureUiInstalled({ env = process.env, cwd = process.cwd() } = {
       settingsFile = profile.settingsFile;
     }
   }
-  if (!settingsFile) return { healed: false, reason: 'no-path' };
+  if (!settingsFile) return { applied: false, reason: 'no-path' };
 
   let current;
   try {
     current = readJsonFile(settingsFile);
   } catch {
-    return { healed: false, reason: 'unreadable', settingsFile };
+    return { applied: false, reason: 'unreadable', settingsFile };
   }
-  if (uiSettingsHealthy(current, profile.mode)) return { healed: false, reason: 'healthy', settingsFile };
 
-  installUi({ settingsFile, mode: profile.mode, language: profile.language, scope: profile.scope, env });
-  return { healed: true, settingsFile, mode: profile.mode, language: profile.language };
+  const previousVariant = detectVariant(current, profile.language);
+  if (previousVariant === variant) {
+    return { applied: false, reason: `already-${variant}`, previousVariant, settingsFile };
+  }
+
+  applyUiVariant({ settingsFile, mode: profile.mode, language: profile.language, variant, env });
+  return { applied: true, variant, previousVariant, settingsFile };
 }
 
-export function uiPatchForMode(mode, { language, env = process.env } = {}) {
+// /menhera-loop:uninstall-ui --farewell : leave the goodbye corpus in settings
+// and forget the profile so SessionStart stops restoring the live corpus.
+export function writeFarewellAndForget({ settingsFile, env = process.env } = {}) {
+  const profile = loadUiProfile(env);
+  const mode = profile?.mode && profile.mode !== 'hooks-only' ? profile.mode : 'full';
+  const language = profile?.language || 'ko';
+  const target = settingsFile || profile?.settingsFile;
+  if (!target) return { ok: false, reason: 'no-target' };
+  applyUiVariant({ settingsFile: target, mode, language, variant: 'farewell', env });
+  try {
+    fs.rmSync(uiProfilePath(env), { force: true });
+  } catch {
+    // Forgetting the profile is best-effort; the farewell corpus is written.
+  }
+  return { ok: true, settingsFile: target, variant: 'farewell', mode, language };
+}
+
+export function uiPatchForMode(mode, { language, env = process.env, variant = 'live' } = {}) {
   if (!MODES.has(mode)) {
     throw new Error(`Unsupported mode: ${mode}`);
   }
   if (mode === 'hooks-only') return {};
-  const corpus = messagesForLanguage(language);
+  const { verbs, tips } = corpusForVariant(language, variant);
   return {
     spinnerVerbs: {
       mode: mode === 'append' ? 'append' : 'replace',
-      verbs: corpus.spinnerVerbs
+      verbs
     },
     spinnerTipsOverride: {
       excludeDefault: mode === 'full',
-      tips: corpus.spinnerTips
+      tips
     },
     // Claude Code's subagentStatusLine schema only accepts {type:"command",
     // command}; the per-status message templates live in ui-config.json and
