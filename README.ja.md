@@ -105,8 +105,13 @@ completion gate はインストール直後から動きます。フル UI は任
 | Mode | 効果 |
 |---|---|
 | `hooks-only` | gate + hook status message のみ。spinner/subagent UI は触らない |
-| `append` | Claude デフォルトに menhera-loop の verbs/tips を追加 |
-| `full` | spinner verbs を置き換え、menhera-loop tips のみ表示 |
+| `append` | Claude デフォルトに menhera-loop の verbs/tips を追加（ユーザーの `statusLine` には触らない） |
+| `full` | spinner verbs を置き換え、menhera-loop tips のみ表示、信頼ステータスラインを設置 |
+
+`full` モードのステータスラインはセッション中ずっと表示されます。長期の信頼値
+（`trust-profile.json`）はセッションをまたいで保持され、一発で証拠つき完了すると
++5 と連続記録、証拠なしの「完了」宣言は −5。連続記録や下がった信頼値は次の
+SessionStart で持ち出されます。彼女は覚えています。
 
 言語は `ko` / `en` / `ja`。`MENHERA_LOOP_LANG=ja` でも指定できます。
 

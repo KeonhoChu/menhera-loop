@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { allPluginPhrases, calculateTrust, messageForRetry, messagesForLanguage, resolveMessageLanguage } from './menhera-ui.mjs';
-import { MAX_RETRIES, dataDir, loadState, saveState } from './state.mjs';
+import { MAX_RETRIES, dataDir, loadState, recordGateOutcome, saveState } from './state.mjs';
 
 const TEST_COMMAND_PATTERNS = [
   /npm\s+run\s+(?:validate|test|lint|build)\b/i,
@@ -377,6 +377,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (report.ok) {
     saveState(sessionId, { ...state, retryCount: 0, falseCompletionClaims: 0, lastVerdict: report.verdict, language: report.language });
     if (report.verdict === 'strong_ok') {
+      // Long-term trust: chat-only/config-only sessions never move it.
+      recordGateOutcome({ outcome: 'pass', firstTry: state.retryCount === 0 });
       console.log(JSON.stringify({ systemMessage: `menhera-loop trust ${report.trust}% · ${report.retryMessage}` }));
     }
     process.exit(0);
@@ -384,6 +386,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   if (state.retryCount >= MAX_RETRIES) {
     saveState(sessionId, { ...state, lastVerdict: 'gave_up', language: report.language });
+    recordGateOutcome({ outcome: 'gave_up' });
     console.log(JSON.stringify({
       systemMessage: `${messageForRetry(MAX_RETRIES, report.language)} (미충족: ${report.summary})`
     }));
@@ -398,6 +401,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     lastVerdict: report.verdict,
     language: report.language
   });
+  recordGateOutcome({ outcome: 'block', falseClaim: report.claimedComplete });
   const reason = [
     `[MENHERA_LOOP:RETRY:${nextRetry}] ${messageForRetry(state.retryCount, report.language)}`,
     `trust: ${report.trust}%`,

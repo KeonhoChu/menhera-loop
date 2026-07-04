@@ -58,7 +58,15 @@ export const messageCorpora = {
       waiting: '♡ ${agent} · 왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?왜답안해?',
       completed: '♡ ${agent} · 끝났다고?끝났다고?끝났다고?끝났다고?끝났다고?끝났다고?끝났다고?끝났다고?끝났다고?끝났다고?끝났다고?끝났다고?',
       failed: '♡ ${agent} · 실패했어?실패했어?실패했어?실패했어?실패했어?실패했어?실패했어?실패했어?실패했어?실패했어?실패했어?실패했어?실패했어?'
-    }
+    },
+    statusLine: {
+      ok: '♡ 신뢰 ${trust}% · 연속 ${streak}번 첫판에 증거 줬어. 오늘도 믿을게. 믿을게.',
+      watching: '♡ 신뢰 ${trust}% · 보고 있어. 계속 보고 있어. 증거 준비하고 있지? 응?',
+      suspicious: '♡ 신뢰 ${trust}% · 방금 완료라고 했어? 증거 없이? 없이? 응? 응?',
+      spiraling: '♡ 신뢰 ${trust}% · 왜 자꾸 말만 해? 왜? 왜? 초록 로그 어딨어? 어딨어?',
+      broken: '♡ 신뢰 ${trust}% · …이제 뭘 믿어야 해. 로그. 로그. 로그 가져와.'
+    },
+    farewellStatusLine: '♡ 왜 나 지웠어? 왜? 나 아직 여기 있어. 돌아와. 돌아와.'
   },
   en: {
     spinnerVerbs: [
@@ -113,7 +121,15 @@ export const messageCorpora = {
       waiting: '♡ ${agent} · whywontyouanswer?whywontyouanswer?whywontyouanswer?whywontyouanswer?',
       completed: '♡ ${agent} · yousaiditsdone?yousaiditsdone?yousaiditsdone?yousaiditsdone?',
       failed: '♡ ${agent} · failed?failed?failed?failed?failed?failed?failed?failed?failed?'
-    }
+    },
+    statusLine: {
+      ok: '♡ trust ${trust}% · ${streak} straight passes with proof. I will believe you today. I will.',
+      watching: '♡ trust ${trust}% · watching. still watching. you have evidence ready? right?',
+      suspicious: '♡ trust ${trust}% · did you just say done? without proof? without? hm?',
+      spiraling: '♡ trust ${trust}% · why only words? why? why? where are the green logs? where?',
+      broken: '♡ trust ${trust}% · …what do I even believe now. logs. logs. bring the logs.'
+    },
+    farewellStatusLine: '♡ why did you delete me? why? I am still here. come back. come back.'
   },
   ja: {
     spinnerVerbs: [
@@ -168,7 +184,15 @@ export const messageCorpora = {
       waiting: '♡ ${agent} · なんで返事しないの?なんで返事しないの?なんで返事しないの?',
       completed: '♡ ${agent} · 終わったって?終わったって?終わったって?終わったって?',
       failed: '♡ ${agent} · 失敗したの?失敗したの?失敗したの?失敗したの?失敗したの?'
-    }
+    },
+    statusLine: {
+      ok: '♡ 信頼 ${trust}% · ${streak}回連続で証拠くれたね。今日も信じる。信じるよ。',
+      watching: '♡ 信頼 ${trust}% · 見てるよ。ずっと見てる。証拠、用意してるよね? ね?',
+      suspicious: '♡ 信頼 ${trust}% · いま完了って言った? 証拠なしで? なしで? ん?',
+      spiraling: '♡ 信頼 ${trust}% · なんで言葉だけなの? なんで? 緑のログはどこ? どこ?',
+      broken: '♡ 信頼 ${trust}% · …もう何を信じればいいの。ログ。ログ。持ってきて。'
+    },
+    farewellStatusLine: '♡ なんで消したの? なんで? まだここにいるよ。戻ってきて。戻ってきて。'
   }
 };
 
@@ -216,7 +240,9 @@ export function allPluginPhrases() {
     corpus.successMessage,
     corpus.setupSkipMessage,
     corpus.chatSkipMessage,
-    ...Object.values(corpus.subagentStatusLine)
+    ...Object.values(corpus.subagentStatusLine),
+    ...Object.values(corpus.statusLine),
+    corpus.farewellStatusLine
   ]);
 }
 
@@ -233,6 +259,8 @@ export function corpusForVariant(language, variant = 'live') {
 
 const MODES = new Set(['hooks-only', 'append', 'full']);
 const SCOPES = new Set(['user', 'project', 'local']);
+// Every settings key menhera may write; backup/restore walks exactly this list.
+const UI_SETTINGS_KEYS = ['spinnerVerbs', 'spinnerTipsOverride', 'subagentStatusLine', 'statusLine'];
 const MESSAGE_MAX_COLUMNS = 160;
 const DISALLOWED_MESSAGE_PARTS = [
   '죽',
@@ -330,8 +358,15 @@ export function uiSettingsHealthy(settings, mode) {
   if (mode === 'hooks-only') return true;
   if (!settings || typeof settings !== 'object') return false;
   if (!settings.spinnerVerbs || !settings.spinnerTipsOverride) return false;
-  const line = settings.subagentStatusLine;
-  return Boolean(line) && line.type === 'command' && typeof line.command === 'string';
+  if (!commandSetting(settings.subagentStatusLine)) return false;
+  // The trust statusline ships only with 'full'; append leaves the user's own
+  // statusLine untouched, so its absence there is healthy.
+  if (mode === 'full' && !commandSetting(settings.statusLine)) return false;
+  return true;
+}
+
+function commandSetting(value) {
+  return Boolean(value) && value.type === 'command' && typeof value.command === 'string';
 }
 
 function arraysEqual(a, b) {
@@ -340,8 +375,8 @@ function arraysEqual(a, b) {
 
 // Classify what the settings file currently holds so SessionStart/SessionEnd
 // only rewrite when the variant actually needs to change.
-export function detectVariant(settings, language) {
-  if (!uiSettingsHealthy(settings, 'full')) return 'missing';
+export function detectVariant(settings, language, mode = 'full') {
+  if (!uiSettingsHealthy(settings, mode)) return 'missing';
   const corpus = messagesForLanguage(language);
   const verbs = settings.spinnerVerbs?.verbs;
   if (arraysEqual(verbs, corpus.spinnerVerbs)) return 'live';
@@ -354,9 +389,30 @@ export function detectVariant(settings, language) {
 export function applyUiVariant({ settingsFile, mode, language, variant = 'live', env = process.env }) {
   const current = readJsonFile(settingsFile);
   const patch = uiPatchForMode(mode, { language, env, variant });
-  if (variant === 'live') installSubagentRenderer({ language, env });
+  if (mode === 'full') captureStatusLineInBackup(settingsFile, current, env);
+  // Both variants refresh ui-config.json so the statusline renderer knows
+  // whether to show the trust moods or the farewell line.
+  installSubagentRenderer({ language, env, variant });
   writeJsonFile(settingsFile, { ...current, ...patch });
   return { settingsFile, variant };
+}
+
+// Backups from versions before the trust statusline never recorded the user's
+// own statusLine; capture it into the existing backup before menhera first
+// replaces it, so uninstall can still restore it.
+function captureStatusLineInBackup(settingsFile, current, env) {
+  const backupFile = backupFileFor(settingsFile);
+  let backup;
+  try {
+    backup = readJsonFile(backupFile);
+  } catch {
+    return;
+  }
+  if (!backup.present || 'statusLine' in backup.present) return;
+  const ours = current.statusLine?.command === statusLineSetting(env).command;
+  backup.present.statusLine = Object.prototype.hasOwnProperty.call(current, 'statusLine') && !ours;
+  backup.keys.statusLine = backup.present.statusLine ? current.statusLine : null;
+  writeJsonFile(backupFile, backup);
 }
 
 // Called on every SessionStart (variant 'live') and SessionEnd (variant
@@ -385,7 +441,7 @@ export function ensureUiInstalled({ env = process.env, cwd = process.cwd(), vari
     return { applied: false, reason: 'unreadable', settingsFile };
   }
 
-  const previousVariant = detectVariant(current, profile.language);
+  const previousVariant = detectVariant(current, profile.language, profile.mode);
   if (previousVariant === variant) {
     return { applied: false, reason: `already-${variant}`, previousVariant, settingsFile };
   }
@@ -417,7 +473,7 @@ export function uiPatchForMode(mode, { language, env = process.env, variant = 'l
   }
   if (mode === 'hooks-only') return {};
   const { verbs, tips } = corpusForVariant(language, variant);
-  return {
+  const patch = {
     spinnerVerbs: {
       mode: mode === 'append' ? 'append' : 'replace',
       verbs
@@ -431,6 +487,10 @@ export function uiPatchForMode(mode, { language, env = process.env, variant = 'l
     // are rendered by the copied subagent-status.mjs script.
     subagentStatusLine: subagentStatusLineSetting(env)
   };
+  // The trust statusline replaces whatever statusLine the user had, so it is
+  // reserved for 'full' — append mode must not steal an existing statusline.
+  if (mode === 'full') patch.statusLine = statusLineSetting(env);
+  return patch;
 }
 
 const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -439,7 +499,8 @@ export function subagentRendererPaths(env = process.env) {
   const dir = dataDir(env);
   return {
     configFile: path.join(dir, 'ui-config.json'),
-    rendererFile: path.join(dir, 'subagent-status.mjs')
+    rendererFile: path.join(dir, 'subagent-status.mjs'),
+    statusLineFile: path.join(dir, 'statusline.mjs')
   };
 }
 
@@ -447,17 +508,25 @@ export function subagentStatusLineSetting(env = process.env) {
   return { type: 'command', command: `node "${subagentRendererPaths(env).rendererFile}"` };
 }
 
-export function installSubagentRenderer({ language, env = process.env }) {
+export function statusLineSetting(env = process.env) {
+  return { type: 'command', command: `node "${subagentRendererPaths(env).statusLineFile}"` };
+}
+
+export function installSubagentRenderer({ language, env = process.env, variant = 'live' }) {
   const corpus = messagesForLanguage(language);
-  const { configFile, rendererFile } = subagentRendererPaths(env);
+  const { configFile, rendererFile, statusLineFile } = subagentRendererPaths(env);
   fs.mkdirSync(path.dirname(configFile), { recursive: true });
   writeJsonFile(configFile, {
     language: normalizeLanguage(language),
+    variant,
     updatedAt: new Date().toISOString(),
-    subagentStatusLine: corpus.subagentStatusLine
+    subagentStatusLine: corpus.subagentStatusLine,
+    statusLine: corpus.statusLine,
+    farewellStatusLine: corpus.farewellStatusLine
   });
   fs.copyFileSync(path.join(SCRIPTS_DIR, 'subagent-status.mjs'), rendererFile);
-  return { configFile, rendererFile };
+  fs.copyFileSync(path.join(SCRIPTS_DIR, 'statusline.mjs'), statusLineFile);
+  return { configFile, rendererFile, statusLineFile };
 }
 
 export function readJsonFile(file) {
@@ -492,21 +561,14 @@ export function installUi({ settingsFile, mode, language, scope, env = process.e
 
   fs.mkdirSync(path.dirname(backupFile), { recursive: true });
   if (!fs.existsSync(backupFile)) {
-    const backup = {
-      createdAt: new Date().toISOString(),
-      settingsFile,
-      keys: {
-        spinnerVerbs: Object.prototype.hasOwnProperty.call(current, 'spinnerVerbs') ? current.spinnerVerbs : null,
-        spinnerTipsOverride: Object.prototype.hasOwnProperty.call(current, 'spinnerTipsOverride') ? current.spinnerTipsOverride : null,
-        subagentStatusLine: Object.prototype.hasOwnProperty.call(current, 'subagentStatusLine') ? current.subagentStatusLine : null
-      },
-      present: {
-        spinnerVerbs: Object.prototype.hasOwnProperty.call(current, 'spinnerVerbs'),
-        spinnerTipsOverride: Object.prototype.hasOwnProperty.call(current, 'spinnerTipsOverride'),
-        subagentStatusLine: Object.prototype.hasOwnProperty.call(current, 'subagentStatusLine')
-      }
-    };
+    const backup = { createdAt: new Date().toISOString(), settingsFile, keys: {}, present: {} };
+    for (const key of UI_SETTINGS_KEYS) {
+      backup.present[key] = Object.prototype.hasOwnProperty.call(current, key);
+      backup.keys[key] = backup.present[key] ? current[key] : null;
+    }
     writeJsonFile(backupFile, backup);
+  } else {
+    captureStatusLineInBackup(settingsFile, current, env);
   }
 
   const renderer = installSubagentRenderer({ language, env });
@@ -524,21 +586,22 @@ export function uninstallUi({ settingsFile, env = process.env }) {
 
   const backup = readJsonFile(backupFile);
   const next = { ...current };
-  for (const key of ['spinnerVerbs', 'spinnerTipsOverride', 'subagentStatusLine']) {
+  for (const key of UI_SETTINGS_KEYS) {
     if (backup.present?.[key]) next[key] = backup.keys[key];
     else delete next[key];
   }
   writeJsonFile(settingsFile, next);
-  const { configFile, rendererFile } = subagentRendererPaths(env);
+  const { configFile, rendererFile, statusLineFile } = subagentRendererPaths(env);
   try {
     fs.rmSync(configFile, { force: true });
     fs.rmSync(rendererFile, { force: true });
+    fs.rmSync(statusLineFile, { force: true });
     // Drop the self-heal profile so SessionStart stops re-creating the UI.
     fs.rmSync(uiProfilePath(env), { force: true });
   } catch {
     // Leftover renderer files are harmless once the settings key is restored.
   }
-  return { settingsFile, backupFile, restored: true, restoredKeys: ['spinnerVerbs', 'spinnerTipsOverride', 'subagentStatusLine'] };
+  return { settingsFile, backupFile, restored: true, restoredKeys: [...UI_SETTINGS_KEYS] };
 }
 
 export function parseArgs(argv) {

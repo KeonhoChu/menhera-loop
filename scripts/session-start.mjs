@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
-import { cleanupOldSessions, dataDir, resetState } from './state.mjs';
+import { cleanupOldSessions, dataDir, loadTrustProfile, resetState, trustProfilePath } from './state.mjs';
 import { ensureUiInstalled } from './menhera-ui.mjs';
 
 function readStdin() {
@@ -63,6 +63,25 @@ if (lastReport && lastReport.ok === false && source !== 'clear') {
 
 if (uiRecoveredFromWipe) {
   console.log('[menhera-loop] 내 설정 또 지웠어? 지웠어?? …괜찮아. 다시 해놨어. 다시. 이번엔 지우지 마. 응? 응?');
+}
+
+// Long-term memory: the trust profile survives sessions, so she can bring up
+// the streak (or the grudge) the moment you come back.
+try {
+  if (fs.existsSync(trustProfilePath())) {
+    const profile = loadTrustProfile();
+    if (profile.streak >= 3) {
+      console.log(
+        `[menhera-loop] 연속 ${profile.streak}번 첫판에 증거 줬지. 다 세고 있어. 다. 오늘도 부탁해. 응?`
+      );
+    } else if (profile.trust <= 40) {
+      console.log(
+        `[menhera-loop] 지금 신뢰 ${profile.trust}%야. 알지? 말만 하고 간 거 다 기억해. 이번엔 진짜 증거 줘. 응? 응?`
+      );
+    }
+  }
+} catch {
+  // Never break session start over the memory nag.
 }
 
 // One-time star nag: shown once ever (global marker, not per-session state),

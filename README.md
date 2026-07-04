@@ -6,6 +6,7 @@
 [日本語 README](README.ja.md)
 
 ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-d97757)
+![CI](https://github.com/Borelchu/menhera-loop/actions/workflows/ci.yml/badge.svg)
 ![zero config](https://img.shields.io/badge/setup-zero%20config-success)
 ![no agent cost](https://img.shields.io/badge/verification-no%20extra%20tokens-blue)
 ![node](https://img.shields.io/badge/node-%E2%89%A518-339933)
@@ -129,6 +130,29 @@ Retry state persists per session. She remembers.
 | 5 (cap) | Exhausted, releases | …지쳤어. 사람 불러줘. 그래도 나 여기 있어. 계속. 계속. |
 | Success | Evidence accepted | 증거 확인했어. 이번엔 진짜 끝났어. 이제 완료라고 해도 돼. ♡ |
 
+## She remembers across sessions
+
+Session retry state expires, but the **trust profile** does not
+(`~/.claude/menhera-loop/trust-profile.json`):
+
+- A first-try gate pass earns **+5 trust** and extends the **streak** of
+  consecutive clean completions. A pass that needed retries earns +2 and breaks the streak.
+- A blocked Stop costs −2 trust; a blocked Stop that *claimed* completion costs **−5**.
+- Making her give up after 5 retries costs **−10**.
+
+The next SessionStart brings it up: a streak of 3+ gets
+`연속 N번 첫판에 증거 줬지. 다 세고 있어.`, and long-term trust ≤40% gets
+`말만 하고 간 거 다 기억해.`
+
+## Status line (full mode)
+
+`full` mode also installs a **status line** so she is visible the whole session,
+not just at Stop. Mood follows the session: clean streak → `♡ 신뢰 92% · 연속 4번
+첫판에 증거 줬어. 오늘도 믿을게.`, retries piling up → `♡ 신뢰 55% · 왜 자꾸 말만 해?
+왜? 왜? 초록 로그 어딨어?`. `append` mode never touches an existing statusLine, and
+uninstall restores whatever statusLine you had before — including one recorded
+before menhera first replaced it.
+
 ## UI modes
 
 The completion gate works out of the box. The full menhera terminal experience
@@ -144,7 +168,7 @@ The completion gate works out of the box. The full menhera terminal experience
 |---|---|
 | `hooks-only` | Gate + hook status messages only; spinner/subagent UI untouched |
 | `append` | Adds her verbs/tips alongside Claude defaults and applies subagent status lines |
-| `full` | Replaces spinner verbs, shows only her tips, and applies subagent status lines |
+| `full` | Replaces spinner verbs, shows only her tips, applies subagent status lines, and installs the trust status line |
 
 Languages: `ko` (default), `en`, `ja`. You can also set `MENHERA_LOOP_LANG=en` before running setup.
 Arguments are positional and optional, so `/menhera-loop:setup append user en` still works when you want explicit mode/scope/language.
@@ -193,8 +217,9 @@ Menhera, but principled. She will never:
 - **Insult or threaten.** The message corpus is test-enforced: no abuse, no self-harm
   or threat imagery; spinner/retry prompts and subagent status lines may be intentionally intense.
 - **Touch your project.** All state lives in `~/.claude/menhera-loop/`
-  (override with `MENHERA_LOOP_DATA`) — session retry state, a rotated event log,
-  and the last verification report. Nothing is written into your working directory.
+  (override with `MENHERA_LOOP_DATA`) — session retry state, the long-term trust
+  profile, a rotated event log, and the last verification report. Nothing is
+  written into your working directory.
 
 ## Development
 

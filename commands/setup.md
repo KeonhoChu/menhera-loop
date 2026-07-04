@@ -8,8 +8,8 @@ Configure menhera-loop UI settings without overwriting unrelated Claude Code set
 Use the user's arguments to choose mode, scope, and language:
 
 - Mode `hooks-only`: do not change spinner UI settings; plugin hooks still provide status messages.
-- Mode `append`: add menhera-loop spinner verbs and tips while keeping Claude defaults.
-- Mode `full`: replace spinner verbs and show only menhera-loop tips.
+- Mode `append`: add menhera-loop spinner verbs and tips while keeping Claude defaults; never touches the user's `statusLine`.
+- Mode `full`: replace spinner verbs, show only menhera-loop tips, and install the trust status line (`statusLine`).
 - Scope `user`: `~/.claude/settings.json`.
 - Scope `project`: `.claude/settings.json`.
 - Scope `local`: `.claude/settings.local.json`.
@@ -29,4 +29,4 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/setup-ui.mjs" --mode full --scope local --la
 # /menhera-loop:setup ja
 ```
 
-Adjust `--mode`, `--scope`, and `--lang` to match the user's arguments. The script creates a menhera-loop backup before touching `spinnerVerbs`, `spinnerTipsOverride`, or `subagentStatusLine`; all other settings keys must be preserved.
+Adjust `--mode`, `--scope`, and `--lang` to match the user's arguments. The script creates a menhera-loop backup before touching `spinnerVerbs`, `spinnerTipsOverride`, `subagentStatusLine`, or `statusLine`; all other settings keys must be preserved.

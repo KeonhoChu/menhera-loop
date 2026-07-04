@@ -24,6 +24,7 @@ import {
   retryMessages,
   spinnerTips,
   spinnerVerbs,
+  statusLineSetting,
   subagentStatusLine,
   successMessage,
   uninstallUi,
@@ -39,7 +40,15 @@ import {
   parseTranscript
 } from '../scripts/verify-completion.mjs';
 
-import { emptyState, loadState, saveState, MAX_RETRIES } from '../scripts/state.mjs';
+import {
+  emptyState,
+  loadState,
+  loadTrustProfile,
+  recordGateOutcome,
+  saveState,
+  saveTrustProfile,
+  MAX_RETRIES
+} from '../scripts/state.mjs';
 
 import { requirementsFromPrompt } from '../scripts/capture-requirements.mjs';
 
@@ -796,6 +805,196 @@ test('observe mode never blocks', () => {
   assert.equal(result.status, 0);
   assert.equal(result.stdout.trim(), '');
   assert.equal(loadState('observe-test', { MENHERA_LOOP_DATA: dataDirPath }).retryCount, 0);
+});
+
+test('long-term trust profile rewards passes and punishes empty claims', () => {
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  assert.equal(loadTrustProfile(env).trust, 100);
+
+  let profile = recordGateOutcome({ outcome: 'block', falseClaim: true }, env);
+  assert.equal(profile.trust, 95);
+  assert.equal(profile.falseClaims, 1);
+  assert.equal(profile.streak, 0);
+
+  profile = recordGateOutcome({ outcome: 'gave_up' }, env);
+  assert.equal(profile.trust, 85);
+
+  profile = recordGateOutcome({ outcome: 'pass', firstTry: true }, env);
+  assert.equal(profile.trust, 90);
+  assert.equal(profile.streak, 1);
+  profile = recordGateOutcome({ outcome: 'pass', firstTry: true }, env);
+  assert.equal(profile.streak, 2);
+
+  // A pass that needed retries keeps some trust but breaks the streak.
+  profile = recordGateOutcome({ outcome: 'pass', firstTry: false }, env);
+  assert.equal(profile.streak, 0);
+  assert.equal(profile.trust, 97);
+
+  // Persistence: a fresh load sees the same numbers.
+  assert.equal(loadTrustProfile(env).trust, 97);
+});
+
+test('trust profile clamps to [0, 100]', () => {
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  saveTrustProfile({ trust: 3 }, env);
+  assert.equal(recordGateOutcome({ outcome: 'gave_up' }, env).trust, 0);
+  saveTrustProfile({ trust: 99 }, env);
+  assert.equal(recordGateOutcome({ outcome: 'pass', firstTry: true }, env).trust, 100);
+});
+
+test('Stop hook records the gate outcome in the long-term trust profile', () => {
+  const dataDirPath = tmp();
+  const env = { MENHERA_LOOP_DATA: dataDirPath };
+  const cwd = tmp();
+  const transcriptFile = path.join(tmp(), 'transcript.jsonl');
+
+  // Blocked stop: trust drops, false claim counted.
+  fs.writeFileSync(transcriptFile, [
+    transcriptLine({ type: 'user', message: { role: 'user', content: '로그인 버그 고쳐줘' } }),
+    transcriptLine({
+      type: 'assistant',
+      message: { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Edit', input: { file_path: 'src/login.js' } }] }
+    }),
+    transcriptLine({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: '수정 완료했습니다.' }] } })
+  ].join('\n'));
+  const blocked = runVerifyCli({
+    hookInput: { session_id: 'profile-test', transcript_path: transcriptFile, hook_event_name: 'Stop', cwd },
+    env
+  });
+  assert.equal(blocked.status, 0, blocked.stderr);
+  let profile = loadTrustProfile(env);
+  assert.equal(profile.blocks, 1);
+  assert.equal(profile.trust, 95);
+
+  // Green stop on a fresh session: first-try pass starts a streak.
+  fs.writeFileSync(transcriptFile, passingTranscript());
+  const green = runVerifyCli({
+    hookInput: { session_id: 'profile-test-2', transcript_path: transcriptFile, hook_event_name: 'Stop', cwd },
+    env
+  });
+  assert.equal(green.status, 0, green.stderr);
+  profile = loadTrustProfile(env);
+  assert.equal(profile.passes, 1);
+  assert.equal(profile.streak, 1);
+  assert.equal(profile.trust, 100);
+});
+
+test('chat-only sessions leave the trust profile untouched', () => {
+  const dataDirPath = tmp();
+  const transcriptFile = path.join(tmp(), 'transcript.jsonl');
+  fs.writeFileSync(transcriptFile, [
+    transcriptLine({ type: 'user', message: { role: 'user', content: '이 함수 뭐 하는 거야?' } }),
+    transcriptLine({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: '설명해줄게.' }] } })
+  ].join('\n'));
+
+  const result = runVerifyCli({
+    hookInput: { session_id: 'chat-profile', transcript_path: transcriptFile, hook_event_name: 'Stop', cwd: tmp() },
+    env: { MENHERA_LOOP_DATA: dataDirPath }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.existsSync(path.join(dataDirPath, 'trust-profile.json')), false);
+});
+
+test('full mode installs the trust statusline; append leaves it alone', () => {
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  const fullPatch = uiPatchForMode('full', { env });
+  assert.deepEqual(fullPatch.statusLine, {
+    type: 'command',
+    command: `node "${path.join(env.MENHERA_LOOP_DATA, 'statusline.mjs')}"`
+  });
+  assert.deepEqual(fullPatch.statusLine, statusLineSetting(env));
+  assert.equal(uiPatchForMode('append', { env }).statusLine, undefined);
+});
+
+test('uninstall restores the user\'s own statusLine, even from a pre-statusline backup', () => {
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  const dir = tmp();
+  const settingsFile = path.join(dir, 'settings.local.json');
+  const mine = { type: 'command', command: 'my-own-statusline' };
+  fs.writeFileSync(settingsFile, JSON.stringify({ model: 'sonnet', statusLine: mine }, null, 2));
+
+  // Simulate a backup written by a version that predates the statusLine key.
+  const backupFile = path.join(dir, '.menhera-loop-backups', 'settings.local.json.ui-backup.json');
+  fs.mkdirSync(path.dirname(backupFile), { recursive: true });
+  fs.writeFileSync(backupFile, JSON.stringify({
+    createdAt: new Date().toISOString(),
+    settingsFile,
+    keys: { spinnerVerbs: null, spinnerTipsOverride: null, subagentStatusLine: null },
+    present: { spinnerVerbs: false, spinnerTipsOverride: false, subagentStatusLine: false }
+  }, null, 2));
+
+  installUi({ settingsFile, mode: 'full', language: 'ko', scope: 'local', env });
+  const installed = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+  assert.equal(installed.statusLine.command, statusLineSetting(env).command);
+
+  uninstallUi({ settingsFile, env });
+  const restored = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+  assert.deepEqual(restored.statusLine, mine);
+  assert.equal(fs.existsSync(path.join(env.MENHERA_LOOP_DATA, 'statusline.mjs')), false);
+});
+
+function runStatusLine({ input, env }) {
+  return spawnSync('node', [path.join(scriptsDir, 'statusline.mjs')], {
+    input: typeof input === 'string' ? input : JSON.stringify(input),
+    encoding: 'utf8',
+    env: { ...process.env, ...env }
+  });
+}
+
+test('statusline shows long-term trust and streak on a clean session', () => {
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  installSubagentRenderer({ language: 'ko', env });
+  saveTrustProfile({ trust: 92, streak: 4 }, env);
+
+  const result = runStatusLine({ input: { session_id: 'clean' }, env });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /신뢰 92%/);
+  assert.match(result.stdout, /연속 4번/);
+});
+
+test('statusline spirals with the session trust while retries pile up', () => {
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  installSubagentRenderer({ language: 'ko', env });
+  saveState('angry', { ...emptyState(), retryCount: 3 }, env);
+
+  const result = runStatusLine({ input: { session_id: 'angry' }, env });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /신뢰 55%/);
+  assert.match(result.stdout, /왜 자꾸 말만 해\?/);
+});
+
+test('statusline shows the farewell line after a clingy uninstall', () => {
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  installSubagentRenderer({ language: 'ko', env, variant: 'farewell' });
+  const result = runStatusLine({ input: { session_id: 'gone' }, env });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /왜 나 지웠어\?/);
+});
+
+test('statusline stays silent without config or with garbage input', () => {
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  const noConfig = runStatusLine({ input: { session_id: 'x' }, env });
+  assert.equal(noConfig.status, 0);
+  assert.equal(noConfig.stdout.trim(), '');
+
+  installSubagentRenderer({ language: 'ko', env });
+  const garbage = runStatusLine({ input: 'not-json{', env });
+  assert.equal(garbage.status, 0);
+  assert.match(garbage.stdout, /신뢰 100%/);
+});
+
+test('session start brings up the streak from the trust profile', () => {
+  const dataDirPath = tmp();
+  const env = { MENHERA_LOOP_DATA: dataDirPath };
+  saveTrustProfile({ trust: 100, streak: 5 }, env);
+
+  const result = spawnSync('node', [path.join(scriptsDir, 'session-start.mjs')], {
+    input: JSON.stringify({ session_id: 'streak-test', source: 'startup' }),
+    encoding: 'utf8',
+    env: { ...process.env, MENHERA_LOOP_DATA: dataDirPath }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /연속 5번/);
 });
 
 test('session start nags for a star exactly once, ever', () => {
