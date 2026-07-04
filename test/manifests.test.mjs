@@ -81,12 +81,23 @@ test('every script referenced from hooks.json exists in the repo', () => {
   }
 });
 
-test('plugin.json is valid and points at real command/hook paths', () => {
+test('plugin.json is valid and points at real command paths', () => {
   const plugin = readJson('.claude-plugin/plugin.json');
   assert.equal(plugin.name, 'menhera-loop');
   assert.match(plugin.version, /^\d+\.\d+\.\d+$/);
   assert.ok(fs.existsSync(path.join(root, plugin.commands)), `missing commands dir: ${plugin.commands}`);
-  assert.ok(fs.existsSync(path.join(root, plugin.hooks)), `missing hooks manifest: ${plugin.hooks}`);
+});
+
+test('plugin.json does not re-declare the auto-loaded hooks/hooks.json', () => {
+  // Claude Code loads hooks/hooks.json automatically; declaring it again in
+  // manifest.hooks is a duplicate and makes the whole plugin fail to load.
+  const plugin = readJson('.claude-plugin/plugin.json');
+  const declared = [].concat(plugin.hooks || []);
+  for (const ref of declared) {
+    const normalized = String(ref).replace(/^\.\//, '');
+    assert.notEqual(normalized, 'hooks/hooks.json', 'manifest.hooks must not reference the standard hooks/hooks.json');
+  }
+  assert.ok(fs.existsSync(path.join(root, 'hooks/hooks.json')), 'standard hooks/hooks.json must exist');
 });
 
 test('package.json, plugin.json, and marketplace.json versions stay in sync', () => {
