@@ -68,6 +68,7 @@ menhera-loop trust 100% · …끝났네. 진짜네. 진짜였네. 다행이다�
 ```
 
 ## Why nothing gets past her
+<img width="1672" height="941" alt="image" src="https://github.com/user-attachments/assets/b34d82a4-803c-4a02-9622-0ab181cc7d4b" />
 
 Every Stop attempt runs through an exhaustion gate. Each phase must pass —
 partial or ambiguous evidence is `suspect_ok`, never success:
