@@ -1,5 +1,6 @@
 # menhera-loop
-<img width="1774" height="887" alt="image" src="https://github.com/user-attachments/assets/0493f20e-6bdf-49ad-8dc1-a7d655532f4b" />
+
+![menhera-loop demo — Claude claims done, the gate blocks until tests actually pass](demo/demo.gif)
 
 > **"Done" means nothing. If there's no evidence, you're not leaving.**
 

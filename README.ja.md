@@ -1,5 +1,7 @@
 # menhera-loop
 
+![menhera-loop デモ — 証拠なしの「完了」を止め、テストが通るまで帰さない](demo/demo.gif)
+
 > **「終わった」は証拠があって初めて信じる。証拠がないなら、まだ帰さない。**
 
 ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-d97757)
