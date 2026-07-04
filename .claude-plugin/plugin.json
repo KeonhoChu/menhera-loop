@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "menhera-loop",
   "displayName": "menhera-loop",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "Menhera-style Claude Code progress messages focused on missing requirements, verification, and hidden TODOs.",
   "author": {
     "name": "Borel"

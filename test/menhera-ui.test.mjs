@@ -489,6 +489,76 @@ test('plugin\'s own phrases and prompts do not poison the verdict', () => {
   assert.equal(report.ok, true);
 });
 
+function setupOnlyTranscript(command = 'node "/plugins/menhera-loop/0.2.8/scripts/setup-ui.mjs" --mode full --scope local --lang ko') {
+  return [
+    transcriptLine({ type: 'user', message: { role: 'user', content: '/menhera-loop:setup full local ko' } }),
+    transcriptLine({
+      type: 'assistant',
+      message: { role: 'assistant', content: [{ type: 'tool_use', id: 's1', name: 'Bash', input: { command } }] }
+    }),
+    transcriptLine({
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 's1', is_error: false, content: '{"ok":true}' }] }
+    }),
+    transcriptLine({
+      type: 'assistant',
+      message: { role: 'assistant', content: [{ type: 'text', text: '셋업 완료했어요.' }] }
+    })
+  ].join('\n');
+}
+
+test('menhera setup-only sessions are exempt from the verification gate', () => {
+  const report = buildVerificationReport({
+    transcriptText: setupOnlyTranscript(),
+    state: { ...emptyState(), requirements: ['멘헤라 셋업 해줘'] },
+    cwd: tmp()
+  });
+  assert.equal(report.ok, true);
+  assert.equal(report.verdict, 'config_only');
+  assert.deepEqual(report.checks, []);
+});
+
+test('uninstall-ui-only sessions are also exempt', () => {
+  const report = buildVerificationReport({
+    transcriptText: setupOnlyTranscript('node "/plugins/menhera-loop/scripts/uninstall-ui.mjs" --scope local'),
+    state: emptyState(),
+    cwd: tmp()
+  });
+  assert.equal(report.verdict, 'config_only');
+});
+
+test('setup mixed with real work still enforces the gate', () => {
+  const mixed = [
+    setupOnlyTranscript(),
+    transcriptLine({
+      type: 'assistant',
+      message: { role: 'assistant', content: [{ type: 'tool_use', id: 'e1', name: 'Edit', input: { file_path: 'src/app.js' } }] }
+    })
+  ].join('\n');
+
+  const report = buildVerificationReport({
+    transcriptText: mixed,
+    state: { ...emptyState(), requirements: ['기능 추가'] },
+    cwd: tmp()
+  });
+  assert.equal(report.verdict !== 'config_only', true);
+});
+
+test('Stop hook does not block a menhera setup-only session', () => {
+  const dataDirPath = tmp();
+  const transcriptFile = path.join(tmp(), 'transcript.jsonl');
+  fs.writeFileSync(transcriptFile, setupOnlyTranscript());
+
+  const result = spawnSync('node', [path.join(scriptsDir, 'verify-completion.mjs')], {
+    input: JSON.stringify({ session_id: 'setup-only', transcript_path: transcriptFile, hook_event_name: 'Stop', cwd: tmp() }),
+    encoding: 'utf8',
+    env: { ...process.env, MENHERA_LOOP_DATA: dataDirPath }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const out = result.stdout.trim() ? JSON.parse(result.stdout) : {};
+  assert.notEqual(out.decision, 'block');
+});
+
 test('chat-only sessions skip enforcement entirely', () => {
   const transcriptText = [
     transcriptLine({ type: 'user', message: { role: 'user', content: '이 함수 뭐 하는 거야?' } }),

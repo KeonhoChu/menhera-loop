@@ -18,6 +18,10 @@ const TEST_COMMAND_PATTERNS = [
 ];
 
 const TODO_PATTERN = /\b(TODO|FIXME|XXX|HACK|stub)\b|not implemented|NotImplementedError/i;
+// menhera-loop's own config commands (the /menhera-loop:setup and
+// :uninstall-ui flows). A session whose only work is these is configuration,
+// not a task that needs test evidence — so it must not trip the Stop gate.
+const CONFIG_COMMAND_PATTERN = /(?:setup-ui|uninstall-ui)\.mjs|menhera-loop:(?:setup|uninstall-ui)/i;
 // Only count markers that sit in comment-like context. Bare occurrences in
 // string literals or prose (e.g. this plugin's own 'TODO어딨어?' corpus) are
 // message content, not leftover work.
@@ -123,14 +127,23 @@ export function buildVerificationReport(input = {}) {
   const requiresHumanInput = Boolean(input.requiresHumanInput)
     || /사용자 확인|수동 승인|manual approval|requires human|human input|credential|api key/i.test(assistantText);
 
-  if (!workAttempted) {
+  // A menhera setup/uninstall session touches no source files and only runs
+  // config commands: exempt it so setup does not burn tokens on the retry loop.
+  const configOnly = workAttempted
+    && transcript.editedFiles.length === 0
+    && transcript.bashRuns.length > 0
+    && transcript.bashRuns.every(run => CONFIG_COMMAND_PATTERN.test(run.command));
+
+  if (!workAttempted || configOnly) {
     return {
       ok: true,
-      verdict: 'no_work',
+      verdict: configOnly ? 'config_only' : 'no_work',
       phase: 'complete',
       trust: calculateTrust(state),
       retryCount: state.retryCount,
-      retryMessage: '오늘은 코드 안 건드렸네. …그래도 나 잊으면 안 돼.',
+      retryMessage: configOnly
+        ? '아, 셋업이구나. 그건 검증 안 해. 안 해. …근데 진짜 일 끝나면 증거는 꼭. 꼭. 응?'
+        : '오늘은 코드 안 건드렸네. …그래도 나 잊으면 안 돼.',
       exhausted: true,
       claimedComplete,
       checks: [],
@@ -139,7 +152,7 @@ export function buildVerificationReport(input = {}) {
       unverifiedRequirements: [],
       failedChecks: [],
       requiresHumanInput,
-      summary: '작업 없음 — 검증 게이트 미적용'
+      summary: configOnly ? 'menhera 설정 작업 — 검증 게이트 미적용' : '작업 없음 — 검증 게이트 미적용'
     };
   }
 
