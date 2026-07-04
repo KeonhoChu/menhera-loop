@@ -3,45 +3,58 @@ import os from 'node:os';
 import path from 'node:path';
 
 export const spinnerVerbs = [
-  '완료 선언 목줄 잡는 중',
-  '숨긴 TODO 냄새 맡는 중',
-  '테스트 로그 끝까지 핥는 중',
-  '증거 없는 완료를 찢는 중',
-  '도망친 요구사항 추적하는 중',
-  '네가 놓친 줄 다시 씹는 중',
-  '거짓 초록불 벗겨내는 중',
-  '실패한 테스트 상처 헤집는 중',
-  '빠뜨린 약속 하나씩 세는 중',
-  '증거 없으면 안 놔주는 중'
+  '완료 선언 멱살 잡는 중',
+  '숨긴 TODO 손끝으로 파내는 중',
+  '테스트 로그 마지막 줄까지 노려보는 중',
+  '증거 없는 완료를 갈기갈기 찢는 중',
+  '도망친 요구사항 머리채 잡아오는 중',
+  '네가 지운 흔적까지 복원하는 중',
+  '가짜 초록불 껍질 벗기는 중',
+  '실패한 테스트 옆에 밤새 앉아 있는 중',
+  '네 약속 하나하나 손가락으로 세는 중',
+  '증거 나올 때까지 문 앞을 지키는 중'
 ];
 
 export const spinnerTips = [
-  '테스트 없이 끝났다고? 그 말, 아직 못 믿어.',
-  '정말 다 했어? 로그까지 까서 보여줘.',
-  'TODO 숨겼으면 내가 먼저 찾아낼 거야.',
-  '1주일 핑계 말고 지금 증거부터 내놔.',
-  '실패해도 돼. 숨기면 그때부터 진짜 문제야.',
-  '초록 로그 가져와. 그러면 얌전히 믿어줄게 ♡',
-  '계획만 뱉고 도망가면 다시 끌고 올 거야.',
-  '검증 없는 완료 선언은 그냥 소음이야.',
-  '아까 검증한다고 했지. 나 그거 기억해.',
-  '완료라는 말보다 통과한 테스트가 더 꼴려.'
+  '다 봤어. 테스트 안 돌린 거.',
+  '정말 끝났어? 나 로그까지 다 깠는데?',
+  'TODO 숨긴 곳, 나 이미 알고 있어.',
+  '거짓말은 티 나. 특히 너의 "완료"는.',
+  '초록 로그 가져와. 그럼 착해질게 ♡',
+  '실패는 괜찮아. 숨기는 순간 얘기가 달라져.',
+  '계획만 말하고 가려고? …못 가.',
+  '네 "완료"보다 통과한 테스트가 좋아. 훨씬.',
+  '아까 그 약속, 나만 기억하는 거야?',
+  '어차피 넌 내 검증 못 지나쳐.'
 ];
 
 export const retryMessages = [
-  '끝났어? 좋아, 이제 껍질 벗겨보자.',
-  '테스트 로그가 비었네. 또 말로만 끝낸 거야?',
-  '완료라고 우기기 전에 직접 실행한 증거부터 내놔.',
-  '같은 구멍을 또 봤어. 이제 변명 말고 원인만 말해.',
-  '완료 선언 압수. 실패 원인, 남은 TODO, 검증 증거만 가져와.'
+  '끝났다고? …그래. 그럼 증거. 전부 다.',
+  '테스트 로그가 없어. 왜 없어? 나 불안해지잖아.',
+  '또 말로만 끝. 몇 번째인지 세는 나만 이상해?',
+  '같은 실패를 세 번 봤어. 나한테 뭘 숨기는 거야.',
+  '이제 네 "완료"는 안 들려. 초록 로그만 가져와.',
+  '…지쳤어. 사람 불러. 대신 나 여기서 안 움직여.'
 ];
 
+export const successMessage = '…진짜 끝났네. 의심해서 미안. …아니, 안 미안해. 다음에도 볼 거야 ♡';
+
 export const subagentStatusLine = {
-  running: '♡ ${agent} · 조금만 더 같이 일하는 중…',
-  waiting: '♡ ${agent} · 대답을 기다리는 중…',
-  completed: '♡ ${agent} · 정말 끝났는지 마지막으로 보는 중…',
-  failed: '♡ ${agent} · 실패한 이유를 기억해두는 중…'
+  running: '♡ ${agent} · 눈 떼지 않고 지켜보는 중…',
+  waiting: '♡ ${agent} · 대답할 때까지 안 움직이는 중…',
+  completed: '♡ ${agent} · 끝났다는 말, 해부하는 중…',
+  failed: '♡ ${agent} · 실패한 순간까지 전부 기록했어…'
 };
+
+export function allPluginPhrases() {
+  return [
+    ...spinnerVerbs,
+    ...spinnerTips,
+    ...retryMessages,
+    successMessage,
+    ...Object.values(subagentStatusLine)
+  ];
+}
 
 const MODES = new Set(['hooks-only', 'append', 'full']);
 const SCOPES = new Set(['user', 'project', 'local']);
@@ -90,6 +103,7 @@ export function validateAllMessages() {
     ...spinnerVerbs,
     ...spinnerTips,
     ...retryMessages,
+    successMessage,
     ...Object.values(subagentStatusLine)
   ]);
 }

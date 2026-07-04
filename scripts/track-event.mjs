@@ -1,9 +1,20 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import { dataDir } from './state.mjs';
 
-const dataDir = process.env.CLAUDE_PLUGIN_DATA || path.join(process.cwd(), '.menhera-loop');
-const eventsFile = path.join(dataDir, 'events.jsonl');
+const MAX_BYTES = 512 * 1024;
+const KEEP_LINES = 500;
+
+function rotateIfNeeded(file) {
+  try {
+    if (fs.statSync(file).size <= MAX_BYTES) return;
+    const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
+    fs.writeFileSync(file, `${lines.slice(-KEEP_LINES).join('\n')}\n`);
+  } catch {
+    // missing file or race — nothing to rotate
+  }
+}
 
 let input = '';
 process.stdin.setEncoding('utf8');
@@ -11,7 +22,6 @@ process.stdin.on('data', chunk => {
   input += chunk;
 });
 process.stdin.on('end', () => {
-  fs.mkdirSync(dataDir, { recursive: true });
   let event = {};
   try {
     event = input.trim() ? JSON.parse(input) : {};
@@ -20,11 +30,19 @@ process.stdin.on('end', () => {
   }
   const record = {
     at: new Date().toISOString(),
-    event: event.hook_event_name || event.event || 'unknown',
-    tool: event.tool_name || event.tool || null,
-    status: event.error || event.parseError ? 'failed' : 'ok'
+    session: event.session_id || null,
+    event: event.hook_event_name || 'unknown',
+    tool: event.tool_name || null,
+    status: event.hook_event_name === 'PostToolUseFailure' || event.parseError ? 'failed' : 'ok'
   };
-  fs.appendFileSync(eventsFile, `${JSON.stringify(record)}\n`);
-  console.log('방금 뭘 했는지 기억해뒀어.');
+  try {
+    const dir = dataDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const eventsFile = path.join(dir, 'events.jsonl');
+    rotateIfNeeded(eventsFile);
+    fs.appendFileSync(eventsFile, `${JSON.stringify(record)}\n`);
+  } catch {
+    // best-effort logging; never fail the hook
+  }
 });
 process.stdin.resume();

@@ -11,7 +11,22 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/scripts/session-start.mjs"
             ],
-            "statusMessage": "우리 약속 다시 읽는 중…",
+            "statusMessage": "지난 약속 전부 복기하는 중…",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/capture-requirements.mjs"
+            ],
+            "statusMessage": "네 말 한 마디도 안 흘리는 중…",
             "timeout": 5
           }
         ]
@@ -27,7 +42,7 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/scripts/track-event.mjs"
             ],
-            "statusMessage": "방금 뭘 했는지 기억하는 중…",
+            "statusMessage": "방금 그 손짓까지 기록하는 중…",
             "timeout": 5
           }
         ]
@@ -43,7 +58,7 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/scripts/track-event.mjs"
             ],
-            "statusMessage": "실패한 이유를 놓치지 않는 중…",
+            "statusMessage": "실패 장면 박제하는 중…",
             "timeout": 5
           }
         ]
@@ -56,16 +71,11 @@
             "type": "command",
             "command": "node",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/scripts/verify-completion.mjs"
+              "${CLAUDE_PLUGIN_ROOT}/scripts/verify-completion.mjs",
+              "--observe"
             ],
-            "statusMessage": "검증 게이트 전부 물어뜯는 중…",
+            "statusMessage": "부하의 완료 선언 해부하는 중…",
             "timeout": 30
-          },
-          {
-            "type": "agent",
-            "statusMessage": "서브에이전트 완료 선언을 뜯어보는 중…",
-            "timeout": 120,
-            "prompt": "You are the menhera-loop subagent completion verifier. Apply the menhera-loop exhaustion gate: do not accept completion until requirements, changed work, verification evidence, TODO scan, and blockers have all been checked. Treat partial evidence as suspect_ok, not success. Return concise Korean feedback with ok, verdict, exhausted, missingEvidence, untriedChecks, and a sharp menhera-loop retry message. Input: $ARGUMENTS"
           }
         ]
       }
@@ -77,16 +87,11 @@
             "type": "command",
             "command": "node",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/scripts/verify-completion.mjs"
+              "${CLAUDE_PLUGIN_ROOT}/scripts/verify-completion.mjs",
+              "--observe"
             ],
-            "statusMessage": "완료 표시 밑바닥까지 긁는 중…",
+            "statusMessage": "체크 표시 뒤집어서 보는 중…",
             "timeout": 30
-          },
-          {
-            "type": "agent",
-            "statusMessage": "완료 표시 밑바닥까지 긁는 중…",
-            "timeout": 120,
-            "prompt": "You are the menhera-loop task completion verifier. Apply the menhera-loop exhaustion gate: requirements evidence, changed-work evidence, verification command evidence, TODO scan, and blockers must be accounted for before ok=true. A passing command alone is suspect_ok unless it maps to the requested task. Return JSON with ok, verdict, exhausted, trust, missingEvidence, untriedChecks, unverifiedRequirements, failedChecks, and retryMessage. Prefix retry reasons with [MENHERA_LOOP:RETRY:n]. Input: $ARGUMENTS"
           }
         ]
       }
@@ -100,14 +105,8 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/scripts/verify-completion.mjs"
             ],
-            "statusMessage": "완료 선언 목줄 잡고 검증하는 중…",
+            "statusMessage": "완료 선언 멱살 잡고 검증하는 중…",
             "timeout": 30
-          },
-          {
-            "type": "agent",
-            "statusMessage": "완료 선언 목줄 잡고 검증하는 중…",
-            "timeout": 120,
-            "prompt": "You are the menhera-loop completion verifier. Apply the menhera-loop exhaustion gate: inspect the repository and transcript, map every requested requirement, confirm relevant tests/build/lint evidence, scan remaining TODO/stub/placeholder signals, and identify genuine external blockers. Never treat a first green signal as success; partial or ambiguous evidence is suspect_ok. Return JSON with ok, verdict, exhausted, trust, phase, checks, missingEvidence, untriedChecks, unverifiedRequirements, failedChecks, requiresHumanInput, and retryMessage. Return {\"ok\":true} only when exhausted=true and all required gates pass or when genuinely blocked by human-only input. Prefix retry reasons with [MENHERA_LOOP:RETRY:n]. Input: $ARGUMENTS"
           }
         ]
       }
