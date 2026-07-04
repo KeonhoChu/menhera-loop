@@ -214,7 +214,7 @@ function displayColumns(value) {
   return columns;
 }
 
-export function settingsPathForScope(scope, env = process.env) {
+export function settingsPathForScope(scope, env = process.env, { cwd = process.cwd() } = {}) {
   if (!SCOPES.has(scope)) {
     throw new Error(`Unsupported scope: ${scope}`);
   }
@@ -222,8 +222,73 @@ export function settingsPathForScope(scope, env = process.env) {
     const home = env.HOME || os.homedir();
     return path.join(home, '.claude', 'settings.json');
   }
-  if (scope === 'project') return path.join(process.cwd(), '.claude', 'settings.json');
-  return path.join(process.cwd(), '.claude', 'settings.local.json');
+  if (scope === 'project') return path.join(cwd, '.claude', 'settings.json');
+  return path.join(cwd, '.claude', 'settings.local.json');
+}
+
+// The setup selection is recorded here so SessionStart can re-apply it when
+// Claude Code drops the UI keys (e.g. after a settings-schema error skips the
+// file). This is what makes the UI self-heal like .omc's session state.
+export function uiProfilePath(env = process.env) {
+  return path.join(dataDir(env), 'ui-profile.json');
+}
+
+export function saveUiProfile({ settingsFile, mode, language, scope }, env = process.env) {
+  const profile = {
+    mode,
+    scope: scope || null,
+    language: normalizeLanguage(language),
+    settingsFile: settingsFile || null,
+    updatedAt: new Date().toISOString()
+  };
+  writeJsonFile(uiProfilePath(env), profile);
+  return profile;
+}
+
+export function loadUiProfile(env = process.env) {
+  try {
+    const profile = readJsonFile(uiProfilePath(env));
+    return profile && typeof profile === 'object' && profile.mode ? profile : null;
+  } catch {
+    return null;
+  }
+}
+
+export function uiSettingsHealthy(settings, mode) {
+  if (mode === 'hooks-only') return true;
+  if (!settings || typeof settings !== 'object') return false;
+  if (!settings.spinnerVerbs || !settings.spinnerTipsOverride) return false;
+  const line = settings.subagentStatusLine;
+  return Boolean(line) && line.type === 'command' && typeof line.command === 'string';
+}
+
+// Called on every SessionStart: if the user opted into the UI but the keys are
+// missing or in the old broken shape, restore them from the saved profile.
+export function ensureUiInstalled({ env = process.env, cwd = process.cwd() } = {}) {
+  const profile = loadUiProfile(env);
+  if (!profile) return { healed: false, reason: 'no-profile' };
+  if (profile.mode === 'hooks-only') return { healed: false, reason: 'hooks-only' };
+
+  let settingsFile = profile.settingsFile;
+  if (profile.scope) {
+    try {
+      settingsFile = settingsPathForScope(profile.scope, env, { cwd });
+    } catch {
+      settingsFile = profile.settingsFile;
+    }
+  }
+  if (!settingsFile) return { healed: false, reason: 'no-path' };
+
+  let current;
+  try {
+    current = readJsonFile(settingsFile);
+  } catch {
+    return { healed: false, reason: 'unreadable', settingsFile };
+  }
+  if (uiSettingsHealthy(current, profile.mode)) return { healed: false, reason: 'healthy', settingsFile };
+
+  installUi({ settingsFile, mode: profile.mode, language: profile.language, scope: profile.scope, env });
+  return { healed: true, settingsFile, mode: profile.mode, language: profile.language };
 }
 
 export function uiPatchForMode(mode, { language, env = process.env } = {}) {
@@ -293,10 +358,13 @@ function backupFileFor(settingsFile) {
   return path.join(dir, `${safeName}.ui-backup.json`);
 }
 
-export function installUi({ settingsFile, mode, language, env = process.env }) {
+export function installUi({ settingsFile, mode, language, scope, env = process.env }) {
   const current = readJsonFile(settingsFile);
   const patch = uiPatchForMode(mode, { language, env });
   const backupFile = backupFileFor(settingsFile);
+
+  // Record the selection so SessionStart can self-heal a wiped settings file.
+  saveUiProfile({ settingsFile, mode, language, scope }, env);
 
   if (mode === 'hooks-only') {
     return { settingsFile, backupFile, mode, changedKeys: [], skipped: true };
@@ -345,6 +413,8 @@ export function uninstallUi({ settingsFile, env = process.env }) {
   try {
     fs.rmSync(configFile, { force: true });
     fs.rmSync(rendererFile, { force: true });
+    // Drop the self-heal profile so SessionStart stops re-creating the UI.
+    fs.rmSync(uiProfilePath(env), { force: true });
   } catch {
     // Leftover renderer files are harmless once the settings key is restored.
   }

@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cleanupOldSessions, dataDir, resetState } from './state.mjs';
+import { ensureUiInstalled } from './menhera-ui.mjs';
 
 function readStdin() {
   return new Promise(resolve => {
@@ -34,6 +35,16 @@ if (input.session_id && (source === 'startup' || source === 'clear')) {
   resetState(input.session_id);
 }
 
+// Self-heal the spinner/status UI if Claude Code dropped the keys since last
+// session (e.g. a settings-schema error skipped the file). No-op unless the
+// user ran /menhera-loop:setup, and no-op while the keys are still healthy.
+let uiHealed = false;
+try {
+  uiHealed = ensureUiInstalled({ cwd: input.cwd || process.cwd() }).healed === true;
+} catch {
+  // Never break session start over UI healing.
+}
+
 let lastReport = null;
 try {
   lastReport = JSON.parse(fs.readFileSync(path.join(dataDir(), 'last-verification.json'), 'utf8'));
@@ -47,6 +58,10 @@ if (lastReport && lastReport.ok === false && source !== 'clear') {
   );
 } else {
   console.log('[menhera-loop] 약속해. "완료"엔 증거. 증거. 응? 약속했다? 안 지키면 못 보내. 진짜 못 보내.');
+}
+
+if (uiHealed) {
+  console.log('[menhera-loop] 내 설정 또 지웠어? 지웠어?? …괜찮아. 다시 해놨어. 다시. 이번엔 지우지 마. 응? 응?');
 }
 
 // One-time star nag: shown once ever (global marker, not per-session state),

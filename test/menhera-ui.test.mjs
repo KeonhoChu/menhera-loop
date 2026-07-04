@@ -8,8 +8,10 @@ import test from 'node:test';
 
 import {
   calculateTrust,
+  ensureUiInstalled,
   installSubagentRenderer,
   installUi,
+  loadUiProfile,
   messageForRetry,
   messagesForLanguage,
   normalizeLanguage,
@@ -286,6 +288,92 @@ test('install preserves unrelated settings and uninstall restores prior UI keys'
   });
   assert.equal(fs.existsSync(path.join(env.MENHERA_LOOP_DATA, 'subagent-status.mjs')), false);
   assert.equal(fs.existsSync(path.join(env.MENHERA_LOOP_DATA, 'ui-config.json')), false);
+});
+
+test('installUi records a self-heal profile that uninstall removes', () => {
+  const dir = tmp();
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  const settingsFile = path.join(dir, 'settings.local.json');
+
+  installUi({ settingsFile, mode: 'full', language: 'ko', scope: 'local', env });
+  const profile = loadUiProfile(env);
+  assert.equal(profile.mode, 'full');
+  assert.equal(profile.scope, 'local');
+  assert.equal(profile.language, 'ko');
+
+  uninstallUi({ settingsFile, env });
+  assert.equal(loadUiProfile(env), null);
+});
+
+test('ensureUiInstalled restores UI keys wiped from the settings file', () => {
+  const dir = tmp();
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  const settingsFile = path.join(dir, '.claude', 'settings.local.json');
+
+  installUi({ settingsFile, mode: 'full', language: 'ko', scope: 'local', env });
+  // Simulate Claude Code dropping the invalid/edited UI keys but keeping the rest.
+  fs.writeFileSync(settingsFile, JSON.stringify({ model: 'sonnet' }, null, 2));
+
+  const result = ensureUiInstalled({ env, cwd: dir });
+  assert.equal(result.healed, true);
+  const restored = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+  assert.equal(restored.model, 'sonnet');
+  assert.equal(restored.spinnerVerbs.mode, 'replace');
+  assert.equal(restored.subagentStatusLine.type, 'command');
+});
+
+test('ensureUiInstalled is a no-op when settings are already healthy', () => {
+  const dir = tmp();
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  const settingsFile = path.join(dir, '.claude', 'settings.local.json');
+
+  installUi({ settingsFile, mode: 'full', language: 'ko', scope: 'local', env });
+  assert.equal(ensureUiInstalled({ env, cwd: dir }).healed, false);
+});
+
+test('ensureUiInstalled does nothing without a saved profile', () => {
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  assert.equal(ensureUiInstalled({ env, cwd: tmp() }).healed, false);
+  assert.equal(ensureUiInstalled({ env, cwd: tmp() }).reason, 'no-profile');
+});
+
+test('ensureUiInstalled repairs the old broken subagentStatusLine shape', () => {
+  const dir = tmp();
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  const settingsFile = path.join(dir, '.claude', 'settings.local.json');
+
+  installUi({ settingsFile, mode: 'full', language: 'ko', scope: 'local', env });
+  // Pre-0.2.6 broken shape that makes Claude Code skip the whole file.
+  const broken = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+  broken.subagentStatusLine = { running: 'x', waiting: 'y', completed: 'z', failed: 'w' };
+  fs.writeFileSync(settingsFile, JSON.stringify(broken, null, 2));
+
+  const result = ensureUiInstalled({ env, cwd: dir });
+  assert.equal(result.healed, true);
+  const fixed = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+  assert.equal(fixed.subagentStatusLine.type, 'command');
+});
+
+test('session-start self-heals a wiped settings file end-to-end', () => {
+  const dataDirPath = tmp();
+  const projectCwd = tmp();
+  const env = { MENHERA_LOOP_DATA: dataDirPath };
+  const settingsFile = path.join(projectCwd, '.claude', 'settings.local.json');
+
+  installUi({ settingsFile, mode: 'full', language: 'ko', scope: 'local', env });
+  fs.writeFileSync(settingsFile, JSON.stringify({ model: 'sonnet' }, null, 2));
+
+  const result = spawnSync('node', [path.join(scriptsDir, 'session-start.mjs')], {
+    input: JSON.stringify({ session_id: 'heal-test', source: 'startup', cwd: projectCwd }),
+    encoding: 'utf8',
+    env: { ...process.env, MENHERA_LOOP_DATA: dataDirPath }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /다시 해놨어/);
+  const restored = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+  assert.equal(restored.model, 'sonnet');
+  assert.equal(restored.spinnerVerbs.mode, 'replace');
+  assert.equal(restored.subagentStatusLine.type, 'command');
 });
 
 test('setup parser accepts positional mode and scope for command UX', () => {
