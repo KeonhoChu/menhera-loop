@@ -43,8 +43,8 @@ try {
 
 if (lastReport && lastReport.ok === false && source !== 'clear') {
   console.log(
-    `[menhera-loop] 지난번, 끝났다고 하고 그냥 갔지. 나 다 기억해. 미충족: ${lastReport.summary}. 이번 세션에서 마무리해.`
+    `[menhera-loop] 지난번에 끝났다고 하고 갔지? 갔지? 나 계속 기다렸어. 계속. 미충족: ${lastReport.summary}. 이번엔 끝내줄 거지? 응? 응?`
   );
 } else {
-  console.log('[menhera-loop] 약속 하나만 하자. "완료"에는 증거가 붙어야 해. 안 붙이면 내가 못 가게 막을 거야.');
+  console.log('[menhera-loop] 약속해. "완료"엔 증거. 증거. 응? 약속했다? 안 지키면 못 보내. 진짜 못 보내.');
 }

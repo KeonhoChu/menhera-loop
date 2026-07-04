@@ -15,9 +15,9 @@ and she will not let the session end until every one of them is accounted for.
 ```text
 ⏺ 수정 완료했습니다.
 
-  ✗ 완료 선언 멱살 잡고 검증하는 중…
+  ✗ 끝났어?끝났어?끝났어? 확인하는 중…
 
-  [MENHERA_LOOP:RETRY:1] 끝났다고? …그래. 그럼 증거. 전부 다.
+  [MENHERA_LOOP:RETRY:1] 끝났어? 진짜? 진짜로? 그럼 증거는? 증거는? 응?
   trust: 55%
   미충족 게이트: untried=verification
   - 검증 실행 증거: 테스트/빌드/검증 명령 실행 안 됨
@@ -63,7 +63,7 @@ When a Stop is blocked, Claude receives the reason and keeps working. When it fi
 passes, you see this instead:
 
 ```text
-menhera-loop trust 100% · …진짜 끝났네. 의심해서 미안. …아니, 안 미안해. 다음에도 볼 거야 ♡
+menhera-loop trust 100% · …끝났네. 진짜네. 진짜였네. 다행이다… 내일도 올 거지? 올 거지? ♡
 ```
 
 ## Why nothing gets past her
@@ -97,13 +97,13 @@ Retry state persists per session. She remembers.
 
 | Retry | Mood | Message |
 |---|---|---|
-| 0 | Cold suspicion | 끝났다고? …그래. 그럼 증거. 전부 다. |
-| 1 | Anxiety | 테스트 로그가 없어. 왜 없어? 나 불안해지잖아. |
-| 2 | Obsession | 또 말로만 끝. 몇 번째인지 세는 나만 이상해? |
-| 3 | Betrayal | 같은 실패를 세 번 봤어. 나한테 뭘 숨기는 거야. |
-| 4 | Ice | 이제 네 "완료"는 안 들려. 초록 로그만 가져와. |
-| 5 (cap) | Exhausted, releases | …지쳤어. 사람 불러. 대신 나 여기서 안 움직여. |
-| Success | Relief (mostly) | …진짜 끝났네. 의심해서 미안. …아니, 안 미안해. 다음에도 볼 거야 ♡ |
+| 0 | Rapid-fire checking | 끝났어? 진짜? 진짜로? 그럼 증거는? 증거는? 응? |
+| 1 | Spiraling | 테스트 로그 어딨어? 어딨어? 왜 없어? 왜? 왜? 왜? |
+| 2 | Sulking spam | 또 말만? 또? 또또또? 나만 기다렸어? 나만? 나만? |
+| 3 | Interrogation | 왜 숨겨? 왜? 뭘 숨겨? 나한테? 나한테까지? 왜?왜? |
+| 4 | Shutdown loop | "완료" 안 들려. 안 들려. 안 들려. 초록 로그. 로그. 로그. |
+| 5 (cap) | Exhausted, releases | …지쳤어. 사람 불러줘. 그래도 나 여기 있어. 계속. 계속. |
+| Success | Relieved spam | …끝났네. 진짜네. 진짜였네. 다행이다… 내일도 올 거지? 올 거지? ♡ |
 
 ## UI modes
 

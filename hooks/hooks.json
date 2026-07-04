@@ -11,7 +11,7 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/scripts/session-start.mjs"
             ],
-            "statusMessage": "지난 약속 전부 복기하는 중…",
+            "statusMessage": "지난 약속 뭐였지? 뭐였지? 다시 읽는 중…",
             "timeout": 5
           }
         ]
@@ -26,7 +26,7 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/scripts/capture-requirements.mjs"
             ],
-            "statusMessage": "네 말 한 마디도 안 흘리는 중…",
+            "statusMessage": "방금 뭐라고 했어? 뭐라고? 받아 적는 중…",
             "timeout": 5
           }
         ]
@@ -42,7 +42,7 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/scripts/track-event.mjs"
             ],
-            "statusMessage": "방금 그 손짓까지 기록하는 중…",
+            "statusMessage": "방금 뭐 했어? 뭐 했어? 기록하는 중…",
             "timeout": 5
           }
         ]
@@ -58,7 +58,7 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/scripts/track-event.mjs"
             ],
-            "statusMessage": "실패 장면 박제하는 중…",
+            "statusMessage": "실패했어? 실패했어?? 박제하는 중…",
             "timeout": 5
           }
         ]
@@ -74,7 +74,7 @@
               "${CLAUDE_PLUGIN_ROOT}/scripts/verify-completion.mjs",
               "--observe"
             ],
-            "statusMessage": "부하의 완료 선언 해부하는 중…",
+            "statusMessage": "걔 진짜 끝났대? 진짜래? 확인하는 중…",
             "timeout": 30
           }
         ]
@@ -90,7 +90,7 @@
               "${CLAUDE_PLUGIN_ROOT}/scripts/verify-completion.mjs",
               "--observe"
             ],
-            "statusMessage": "체크 표시 뒤집어서 보는 중…",
+            "statusMessage": "체크했네? 진짜야? 진짜? 다시 보는 중…",
             "timeout": 30
           }
         ]
@@ -105,7 +105,7 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/scripts/verify-completion.mjs"
             ],
-            "statusMessage": "완료 선언 멱살 잡고 검증하는 중…",
+            "statusMessage": "끝났어?끝났어?끝났어? 확인하는 중…",
             "timeout": 30
           }
         ]
