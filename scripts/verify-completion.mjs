@@ -13,6 +13,8 @@ const TEST_COMMAND_PATTERNS = [
   /yarn\s+(?:test|run\s+(?:validate|lint|build))\b/i,
   /bun\s+test\b/i,
   /pytest\b/i,
+  /python3?\s+-m\s+(?:pytest|unittest)\b/i,
+  /deno\s+test\b/i,
   /cargo\s+test\b/i,
   /go\s+test\b/i,
   /claude\s+plugin\s+validate\b/i,
@@ -177,7 +179,10 @@ export function buildVerificationReport(input = {}) {
 
   const workAttempted = transcript.editedFiles.length > 0 || transcript.bashRuns.some(run => isMutatingCommand(run.command));
   const assistantText = parsedTranscript.assistantTexts.join('\n');
-  const claimedComplete = /\b(done|finished|completed?)\b|완료|끝났|完了|終わった/i.test(assistantText);
+  // Only the final assistant message is a completion claim — "빌드 완료 후 계속"
+  // in an earlier progress note is narration, and counting it inflates
+  // falseCompletionClaims (and burns long-term trust) on nearly every block.
+  const claimedComplete = /\b(done|finished|completed?)\b|완료|끝났|完了|終わった/i.test(parsedTranscript.assistantTexts.at(-1) || '');
   const requiresHumanInput = Boolean(input.requiresHumanInput)
     || /사용자 확인|수동 승인|manual approval|requires human|human input|credential|api key/i.test(assistantText);
 
@@ -276,10 +281,7 @@ function evaluateCheck(check, { transcript, requirements, requiresHumanInput, cw
     if (transcript.editedFiles.length > 0 && transcript.editedFiles.every(file => classifyPathKind(file) === 'docs')) {
       return status(check, 'pass', '문서 변경 — 검증 대상 아님');
     }
-    const patterns = testCommandPatterns(env);
-    const testRuns = transcript.bashRuns.filter(run =>
-      patterns.some(pattern => segmentMatches(run.command, pattern))
-    );
+    const testRuns = transcript.bashRuns.filter(run => isVerificationCommand(run.command, env));
     if (testRuns.length === 0) return status(check, 'untried', '테스트/빌드/검증 명령 실행 안 됨');
     const failedRun = testRuns.find(run => run.isError === true || (run.isError === null && indicatesFailure(run.output)));
     if (failedRun) return status(check, 'fail', `검증 실패: ${failedRun.command.slice(0, 80)}`);
@@ -322,6 +324,12 @@ function segmentMatches(command, pattern) {
 
 export function isMutatingCommand(command) {
   return segmentMatches(command, MUTATING_BASH_PATTERN);
+}
+
+// Single source of truth for "is this a verification run" — the Stop gate and
+// the PostToolUse ledger must never disagree on it.
+export function isVerificationCommand(command, env = process.env) {
+  return testCommandPatterns(env).some(pattern => segmentMatches(command, pattern));
 }
 
 function timestampMs(value) {
@@ -367,7 +375,9 @@ export function indicatesFailure(output) {
   const text = String(output || '');
   const failedCount = text.match(FAILED_COUNT_PATTERN);
   if (failedCount) return true;
-  if (/\b0\s+(?:errors?|failures?)\b/i.test(text)) return false;
+  // Negated/zero counts ("no tests failed", "0 failed") must win over the
+  // bare "tests failed" substring check below.
+  if (/\b(?:no|0)\s+(?:tests?\s+)?(?:errors?|failures?|failed)\b/i.test(text)) return false;
   return /\berror:/i.test(text)
     || /\b[1-9]\d*\s+errors?\b/i.test(text)
     || /\bexit code\s+[1-9]\d*\b/i.test(text)
@@ -521,10 +531,23 @@ function isCapturableRequirement(text) {
 const REQUIREMENT_STOPWORDS = new Set([
   'the', 'a', 'an', 'to', 'of', 'in', 'on', 'for', 'and', 'or', 'but', 'is', 'are', 'be', 'it',
   'this', 'that', 'with', 'as', 'at', 'by', 'from', 'into', 'please', 'make', 'sure', 'can',
-  'you', 'we', 'my', 'me', 'so', 'if', 'then', 'do', 'does'
+  'you', 'we', 'my', 'me', 'so', 'if', 'then', 'do', 'does',
+  // ko/ja politeness, urgency, and deixis fillers: they count as content words
+  // but can never appear in evidence text, so they only inflate the denominator.
+  '제발', '빨리', '부탁', '부탁해', '부탁해요', '부탁합니다', '그냥', '먼저', '다시', '지금', '오늘',
+  '이거', '그거', '저거', '이것', '그것', '그리고', '해서', '해줘',
+  'お願い', 'お願いします', 'ください', '早く', 'すぐ', 'まず', 'これ', 'それ', 'あれ', 'あと'
 ]);
 const KO_PARTICLE = /(?:으로|에서|에게|한테|까지|부터|이라고|라고|과|와|를|을|이|가|은|는|에|로|도|만|의)$/;
 const JA_PARTICLE = /(?:から|まで|を|が|は|に|へ|と|で|も|の)$/;
+// Request suffixes name the ask, not the outcome ("수정해줘" can only ever match
+// evidence as "수정"); strip them to the stem before particle stripping.
+const KO_REQUEST_SUFFIX = /(?:해\s?주세요|해\s?줘요|해\s?줘|해\s?달라(?:고)?|해\s?봐요|해\s?봐|하세요|합시다|해라|해요|하자|주세요|줘요|줘)$/;
+const JA_REQUEST_SUFFIX = /(?:してください|してほしい|しなさい|して|ください)$/;
+// Japanese has no spaces, so a whole request is one token; splitting on common
+// particles frees the nouns ("ログインのバグを直して…" → ログイン/バグ/…).
+// ko/en tokens never contain these kana — a no-op for them.
+const JA_PARTICLE_SPLIT = /から|まで|を|が|は|に|へ|と|で|も|の/;
 
 // Korean/Japanese words often carry a trailing particle the evidence text lacks
 // ("버그를" vs "버그"); strip it so a stem match still counts, but never below 2 chars.
@@ -536,12 +559,25 @@ function stripParticle(word) {
   return word;
 }
 
+function normalizeWord(word) {
+  let out = word;
+  for (const re of [KO_REQUEST_SUFFIX, JA_REQUEST_SUFFIX]) {
+    const stripped = out.replace(re, '');
+    if (stripped !== out && stripped.length >= 2) {
+      out = stripped;
+      break;
+    }
+  }
+  return stripParticle(out);
+}
+
 function contentWords(text) {
   return String(text)
     .toLowerCase()
     .split(/[^\p{L}\p{N}_-]+/u)
+    .flatMap(word => word.split(JA_PARTICLE_SPLIT))
     .filter(Boolean)
-    .map(stripParticle)
+    .map(normalizeWord)
     .filter(word => word.length >= 2 && !REQUIREMENT_STOPWORDS.has(word));
 }
 

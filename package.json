@@ -1,6 +1,6 @@
 {
   "name": "menhera-loop",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Claude Code plugin for menhera-loop messaging and completion-state UI.",
   "type": "module",
   "license": "MIT",

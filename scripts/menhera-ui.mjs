@@ -332,6 +332,7 @@ export function allPluginPhrases() {
     corpus.gaveUpReportMessage,
     corpus.preflightContractMessage,
     corpus.finalRetryConfession,
+    ...Object.values(corpus.sessionStart),
     ...Object.values(corpus.subagentStatusLine),
     ...Object.values(corpus.statusLine),
     corpus.farewellStatusLine,

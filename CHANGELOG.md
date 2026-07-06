@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5.1
+
+Post-release fixes for the two P1s confirmed in the v0.5.0 review, plus gate-precision cleanups.
+
+### Fixes
+- The ledger's failure-text fallback now applies only to verification commands — `grep "error:"` / `cat build.log` are recorded as unknown, not failed, so silent-recovery no longer nags about repeated read-only commands (an informational `message` field alone is not a failure signal either).
+- ko/ja request suffixes are stripped to their stem and politeness/urgency fillers ("제발", "부탁해요", "お願い") are stopwords, so "결제 버그 고쳐줘 제발 빨리" no longer blocks against green evidence; drift detection is unchanged.
+- `python -m pytest/unittest` and `deno test` are recognized as verification commands.
+- A completion claim is read only from the final assistant message, and negated failure text ("no/0 tests failed") no longer reads as a failure.
+- The run-ledger cap evicts unknown-outcome (read-only) runs first, so green verification evidence survives grep-heavy sessions; path-kind classification is now shared from verify-completion (was duplicated with diverging semantics).
+
 ## v0.5.0
 
 Ledger release: she watches tool outcomes directly now, catches repeated silent failures, and nags before work starts.

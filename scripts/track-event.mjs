@@ -3,11 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { atomicWriteFileSync, dataDir, loadState, saveState } from './state.mjs';
 import { messagesForLanguage, resolveMessageLanguage } from './menhera-ui.mjs';
-import { indicatesFailure } from './verify-completion.mjs';
+import { classifyPathKind, indicatesFailure, isVerificationCommand } from './verify-completion.mjs';
 
 const MAX_BYTES = 512 * 1024;
 const KEEP_LINES = 500;
-const DOC_EXTS = new Set(['.md', '.mdx', '.rst', '.txt', '.adoc']);
 const SECRET_PATTERNS = [
   /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{12,}/gi,
   /\b(sk-[A-Za-z0-9_-]{16,})\b/g,
@@ -22,15 +21,6 @@ function rotateIfNeeded(file) {
   } catch {
     // missing file or race — nothing to rotate
   }
-}
-
-export function classifyPathKind(filePath) {
-  const normalized = String(filePath || '').replace(/\\/g, '/');
-  const base = path.basename(normalized);
-  if (/^README(?:\.|$)/i.test(base) || base === 'AGENTS.md') return 'docs';
-  if (normalized.split('/').includes('docs')) return 'docs';
-  if (DOC_EXTS.has(path.extname(base).toLowerCase())) return 'docs';
-  return 'code';
 }
 
 export function redactSecrets(value) {
@@ -88,25 +78,29 @@ function textFromResponse(response) {
     .join('\n');
 }
 
-function verificationRunFromEvent(event) {
+function verificationRunFromEvent(event, env = process.env) {
   const command = commandFromEvent(event);
   if (!command) return null;
   const response = event.tool_response || event.toolResponse || {};
   const exitCode = event.hook_event_name === 'PostToolUseFailure' ? (exitCodeFromResponse(response) ?? 1) : exitCodeFromResponse(response);
-  const error = event.error || response.error || response.message || null;
+  // response.message is informational, not a failure signal — a message on a
+  // successful run must not flip it to failed.
+  const errorSignal = event.error || response.error || null;
   const text = textFromResponse(response);
-  // Prefer the exit code; when the harness omits it, fall back to the same
-  // hardened failure-text check the Stop gate uses, so a failing verification
-  // that arrives via PostToolUse (not PostToolUseFailure) is not stored as green.
+  // Prefer explicit signals, then the exit code. The hardened failure-text
+  // fallback only applies to commands the Stop gate treats as verification —
+  // "error:" in the output of `grep`/`cat` is information, not a failure, so
+  // anything else without a signal stays unknown (null) instead of failed.
   let success;
-  if (event.hook_event_name === 'PostToolUseFailure' || error) success = false;
+  if (event.hook_event_name === 'PostToolUseFailure' || errorSignal) success = false;
   else if (exitCode !== null) success = exitCode === 0;
-  else success = !indicatesFailure(text);
+  else if (isVerificationCommand(command, env)) success = !indicatesFailure(text);
+  else success = null;
   return {
     command,
     exitCode,
     success,
-    error: error ? String(error) : null,
+    error: errorSignal ? String(errorSignal) : null,
     output: redactSecrets(text).slice(0, 4000),
     at: new Date().toISOString()
   };
@@ -137,12 +131,12 @@ function failureFromEvent(event, run) {
 }
 
 export function silentRecoveryContext(event, state = {}, env = process.env) {
-  const failure = failureFromEvent(event, verificationRunFromEvent(event));
+  const failure = failureFromEvent(event, verificationRunFromEvent(event, env));
   if (!failure?.signature) return null;
   const previousCount = (state.failures || []).filter(item => item.signature === failure.signature).length;
   const notified = new Set(state.silentRecoveryNotifiedSignatures || []);
   const shouldNotify = previousCount >= 1 && !notified.has(failure.signature);
-  const nextState = applyEventToState(state, redactSecrets(event));
+  const nextState = applyEventToState(state, redactSecrets(event), env);
   if (shouldNotify) {
     nextState.silentRecoveryNotifiedSignatures = [...notified, failure.signature].slice(-100);
   }
@@ -154,14 +148,31 @@ export function silentRecoveryContext(event, state = {}, env = process.env) {
   };
 }
 
-export function applyEventToState(state, event) {
+// Cap the run ledger, but evict unknown-outcome (read-only) runs before
+// anything with a real verdict — 100 greps after a green `npm test` must not
+// push the gate's freshness evidence out of the window.
+function capRuns(runs, limit = 100) {
+  if (runs.length <= limit) return runs;
+  let toDrop = runs.length - limit;
+  const kept = [];
+  for (const run of runs) {
+    if (toDrop > 0 && run.success === null) {
+      toDrop -= 1;
+      continue;
+    }
+    kept.push(run);
+  }
+  return kept.slice(-limit);
+}
+
+export function applyEventToState(state, event, env = process.env) {
   const next = { ...state };
   const edit = editedFileFromEvent(event);
   if (edit) {
     next.editedFiles = uniqueBy([...(next.editedFiles || []), edit], item => item.path).map(item => item.path === edit.path ? { ...item, ...edit } : item);
   }
-  const run = verificationRunFromEvent(event);
-  if (run) next.verificationRuns = [...(next.verificationRuns || []), run].slice(-100);
+  const run = verificationRunFromEvent(event, env);
+  if (run) next.verificationRuns = capRuns([...(next.verificationRuns || []), run]);
   const failure = failureFromEvent(event, run);
   if (failure?.signature) next.failures = [...(next.failures || []), failure].slice(-100);
   return next;
@@ -209,7 +220,7 @@ export function handleEvent(event, env = process.env) {
       saveState(event.session_id, recovery.nextState, env);
       additionalContext = recovery.additionalContext;
     } else {
-      saveState(event.session_id, applyEventToState(state, redactSecrets(event)), env);
+      saveState(event.session_id, applyEventToState(state, redactSecrets(event), env), env);
     }
   }
   // additionalContext is only injected into the model when nested under

@@ -39,6 +39,7 @@ import {
   extractRequirements,
   indicatesFailure,
   isMutatingCommand,
+  isVerificationCommand,
   parseTranscript,
   detectPromiseNoAct
 } from '../scripts/verify-completion.mjs';
@@ -1455,6 +1456,46 @@ test('requirement evidence needs content words, not just function words', () => 
   assert.equal(strong.unverifiedRequirements.length, 0);
 });
 
+test('ko urgency fillers and request suffix do not block matching evidence', () => {
+  const report = buildVerificationReport({
+    transcriptText: passingTranscript({ userText: '결제 버그 고쳐줘 제발 빨리', assistantText: '결제 버그 수정했습니다. 테스트 통과.' }),
+    state: { ...emptyState(), requirements: ['결제 버그 고쳐줘 제발 빨리'] },
+    cwd: tmp()
+  });
+  assert.equal(report.ok, true);
+  assert.deepEqual(report.unverifiedRequirements, []);
+});
+
+test('ko politeness phrases do not block matching evidence', () => {
+  const report = buildVerificationReport({
+    transcriptText: passingTranscript({ userText: '버그 좀 고쳐주세요 부탁해요', assistantText: '결제 버그 수정했습니다. 테스트 통과.' }),
+    state: { ...emptyState(), requirements: ['버그 좀 고쳐주세요 부탁해요'] },
+    cwd: tmp()
+  });
+  assert.equal(report.ok, true);
+  assert.deepEqual(report.unverifiedRequirements, []);
+});
+
+test('drift is still blocked after request-suffix stripping', () => {
+  const report = buildVerificationReport({
+    transcriptText: passingTranscript({ userText: '결제 버그 고쳐줘', assistantText: '로깅 포맷 정리했습니다.' }),
+    state: { ...emptyState(), requirements: ['결제 버그 고쳐줘'] },
+    cwd: tmp()
+  });
+  assert.equal(report.ok, false);
+  assert.equal(report.unverifiedRequirements.length, 1);
+});
+
+test('ja request sentence matches evidence after particle split and suffix strip', () => {
+  const report = buildVerificationReport({
+    transcriptText: passingTranscript({ userText: 'ログインのバグを直してください', assistantText: 'ログインのバグを修正しました。テストも通過。' }),
+    state: { ...emptyState(), requirements: ['ログインのバグを直してください'] },
+    cwd: tmp()
+  });
+  assert.equal(report.ok, true);
+  assert.deepEqual(report.unverifiedRequirements, []);
+});
+
 test('Stop hook reads only the transcript tail', () => {
   const transcriptFile = path.join(tmp(), 'big.jsonl');
   const filler = Array.from({ length: 400 }, (_, i) => transcriptLine({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: `progress note ${i} `.repeat(20) }] } })).join('\n');
@@ -1497,6 +1538,94 @@ test('ledger marks a failing verification without an exit code as failed', () =>
     tool_input: { command: 'npm test' },
     tool_response: { stdout: 'Tests: 2 failed, 3 passed' }
   });
+  assert.equal(state.verificationRuns[0].success, false);
+  assert.equal(state.failures.length, 1);
+});
+
+test('ledger leaves a read-only command unknown despite failure-looking text', () => {
+  const state = applyEventToState(emptyState(), {
+    hook_event_name: 'PostToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: 'grep -rn "error:" src/' },
+    tool_response: { stdout: 'src/app.js:1: error: handled upstream' }
+  });
+  assert.equal(state.verificationRuns[0].success, null);
+  assert.equal((state.failures || []).length, 0);
+});
+
+test('repeated read-only commands never trigger silent recovery', () => {
+  const event = {
+    hook_event_name: 'PostToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: 'cat build.log' },
+    tool_response: { stdout: 'java.lang.Exception: boom' }
+  };
+  assert.equal(silentRecoveryContext(event, {}, { MENHERA_LOOP_LANG: 'en' }), null);
+  const state = applyEventToState(emptyState(), event);
+  assert.equal(silentRecoveryContext(event, state, { MENHERA_LOOP_LANG: 'en' }), null);
+});
+
+test('informational message field does not flip a successful run to failed', () => {
+  const state = applyEventToState(emptyState(), {
+    hook_event_name: 'PostToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: 'npm test' },
+    tool_response: { exit_code: 0, message: 'done' }
+  });
+  assert.equal(state.verificationRuns[0].success, true);
+  assert.equal((state.failures || []).length, 0);
+});
+
+test('python -m and deno test count as verification commands', () => {
+  assert.equal(isVerificationCommand('python -m pytest -q'), true);
+  assert.equal(isVerificationCommand('python3 -m unittest discover'), true);
+  assert.equal(isVerificationCommand('deno test'), true);
+  assert.equal(isVerificationCommand('python manage.py runserver'), false);
+});
+
+test('negated failure counts are not failures', () => {
+  assert.equal(indicatesFailure('All good, no tests failed'), false);
+  assert.equal(indicatesFailure('Tests: 0 failed'), false);
+  assert.equal(indicatesFailure('Tests failed'), true);
+});
+
+test('completion claim reads only the final assistant message', () => {
+  const transcript = [
+    transcriptLine({ type: 'user', message: { role: 'user', content: '로그인 버그 고쳐줘' } }),
+    transcriptLine({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: '빌드 완료 후 이어서 볼게요.' }] } }),
+    transcriptLine({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'e1', name: 'Edit', input: { file_path: 'src/login.js' } }] } }),
+    transcriptLine({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: '아직 검증 중이에요.' }] } })
+  ].join('\n');
+  const report = buildVerificationReport({ transcriptText: transcript, state: emptyState(), cwd: tmp() });
+  assert.equal(report.claimedComplete, false);
+});
+
+test('read-only runs are evicted before verification evidence', () => {
+  let state = applyEventToState(emptyState(), {
+    hook_event_name: 'PostToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: 'npm test' },
+    tool_response: { exit_code: 0, stdout: '12 passed' }
+  });
+  for (let i = 0; i < 120; i += 1) {
+    state = applyEventToState(state, {
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Bash',
+      tool_input: { command: `cat log-${i}.txt` },
+      tool_response: { stdout: 'noise' }
+    });
+  }
+  assert.equal(state.verificationRuns.length, 100);
+  assert.equal(state.verificationRuns.some(run => run.command === 'npm test' && run.success === true), true);
+});
+
+test('user test patterns are honored when the ledger records a run', () => {
+  const state = applyEventToState(emptyState(), {
+    hook_event_name: 'PostToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: 'moon ci' },
+    tool_response: { stdout: '2 tests failed' }
+  }, { MENHERA_LOOP_TEST_PATTERNS: 'moon\\s+ci' });
   assert.equal(state.verificationRuns[0].success, false);
   assert.equal(state.failures.length, 1);
 });
