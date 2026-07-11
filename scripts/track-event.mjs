@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
-import { atomicWriteFileSync, dataDir, loadState, saveState } from './state.mjs';
+import { atomicWriteFileSync, dataDir, loadState, redactSecrets, saveState } from './state.mjs';
+
+export { redactSecrets };
 import { messagesForLanguage, resolveIntensity, resolveMessageLanguage } from './menhera-ui.mjs';
 import { classifyPathKind, indicatesFailure, isVerificationCommand } from './verify-completion.mjs';
 
@@ -21,21 +23,6 @@ function rotateIfNeeded(file) {
   } catch {
     // missing file or race — nothing to rotate
   }
-}
-
-export function redactSecrets(value) {
-  if (typeof value === 'string') {
-    return value
-      .replace(/\b(authorization\s*[:=]\s*['"]?)(?:Bearer\s+)?[^\r\n'"]+/gi, '$1Bearer [REDACTED]')
-      .replace(/\b((?:api[_-]?key|token|secret|password)\s*[:=]\s*['"]?)[^\r\n'"]+/gi, '$1[REDACTED]')
-      .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/gi, 'Bearer [REDACTED]')
-      .replace(/\bsk-[A-Za-z0-9_-]{16,}\b/g, '[REDACTED]');
-  }
-  if (Array.isArray(value)) return value.map(redactSecrets);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, /token|secret|password|api[_-]?key|authorization/i.test(key) ? '[REDACTED]' : redactSecrets(item)]));
-  }
-  return value;
 }
 
 function uniqueBy(items, keyFor) {

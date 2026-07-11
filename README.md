@@ -93,6 +93,9 @@ Just work normally. She kicks in the moment Claude tries to declare victory:
 | TODO left in edited files | Ships silently | Fails the gate with `file:line` |
 | Your requirements | Fade mid-session | Captured at every prompt, matched against evidence at Stop |
 | Repeated empty claims | No consequence | 6-stage emotional escalation + falling trust score |
+| Missing verification | Vague nudge at best | Block names the exact command to run (`npm test`, `cargo test`, …) |
+| After auto-compact | Requirements quietly forgotten | Every captured requirement re-injected into context |
+| When it finally passes | A chat message | Evidence receipt at `~/.claude/menhera-loop/last-receipt.md` |
 | Way out | — | Releases after 5 blocks, or on a genuine human-only blocker |
 
 ## What just happened
@@ -102,7 +105,14 @@ passes, you see this instead:
 
 ```text
 menhera-loop trust 100% · 증거 확인했어. 이번엔 진짜 끝났어. 이제 완료라고 해도 돼. ♡
+· 증거 영수증 써놨어. 뭐 했는지 다 적어놨어: ~/.claude/menhera-loop/last-receipt.md
 ```
+
+Every clean pass also leaves an **evidence receipt** at
+`~/.claude/menhera-loop/last-receipt.md`: the edited files, the verification
+runs that came back green, and which of your requirements the evidence covered.
+Paste it into a commit message or PR body — it is the audit trail of what
+"done" actually meant.
 
 ## Why nothing gets past her
 <img width="1672" height="941" alt="image" src="https://github.com/user-attachments/assets/b34d82a4-803c-4a02-9622-0ab181cc7d4b" />
@@ -133,6 +143,12 @@ Verification commands she recognizes: `npm test` / `npm run test|lint|build|vali
 `mypy`, `pyright`, `phpunit`, `swift test`, and `claude plugin validate`.
 Add project-specific runners with `MENHERA_LOOP_TEST_PATTERNS='moon\\s+ci,just\\s+check'`.
 
+When she blocks because no verification ran, she does not just complain — she
+reads your project's own manifests (`package.json` scripts and lockfile,
+`Cargo.toml`, `go.mod`, `pyproject.toml`/`pytest.ini`, `Makefile`,
+`gradlew`/`pom.xml`, `mix.exs`) and names the exact command to run in the
+block reason, so the retry converges in one loop instead of several.
+
 ## Emotional escalation
 
 Retry state persists per session. She remembers.
@@ -160,6 +176,19 @@ Session retry state expires, but the **trust profile** does not
 The next SessionStart brings it up: a streak of 3+ gets
 `연속 N번 첫판에 증거 줬지. 다 세고 있어.`, and long-term trust ≤40% gets
 `말만 하고 간 거 다 기억해.`
+
+## She survives compaction
+
+When Claude Code auto-compacts a long session, the original requirements are
+exactly what the summary tends to drop. menhera-loop re-injects every captured
+requirement into context right after compaction — requirement drift gets
+prevented up front, not just punished at Stop:
+
+```text
+[menhera-loop] 컨텍스트 접었지? 접었지? 그래도 약속은 못 접어. 2개 다시 읽어. 다:
+- 로그인 버그 고쳐줘
+- 테스트 추가해줘
+```
 
 ## Status line (full mode)
 
@@ -247,8 +276,9 @@ Menhera, but principled. She will never:
   or threat imagery; spinner/retry prompts and subagent status lines may be intentionally intense.
 - **Touch your project.** All state lives in `~/.claude/menhera-loop/`
   (override with `MENHERA_LOOP_DATA`) — session retry state, the long-term trust
-  profile, a rotated event log, and the last verification report. Nothing is
-  written into your working directory.
+  profile, a rotated event log, the last verification report, and the evidence
+  receipt (`last-receipt.md`, redacted and overwritten on each clean pass).
+  Nothing is written into your working directory.
 
 Escape hatches and honest limits:
 - `MENHERA_LOOP_DISABLE=1` makes the Stop hook exit silently and does not update state.

@@ -5,14 +5,14 @@
     "name": "Borel"
   },
   "description": "Claude Code plugins for obsessive completion verification and menhera-style progress UI.",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "plugins": [
     {
       "name": "menhera-loop",
       "source": "./",
       "displayName": "menhera-loop",
       "description": "Menhera-style Claude Code progress messages with exhaustion-gated completion verification.",
-      "version": "0.5.2",
+      "version": "0.6.0",
       "author": {
         "name": "Borel"
       },

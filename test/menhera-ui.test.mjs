@@ -36,6 +36,7 @@ import {
 } from '../scripts/menhera-ui.mjs';
 
 import {
+  buildReceiptMarkdown,
   buildVerificationReport,
   classifyPathKind,
   extractRequirements,
@@ -43,6 +44,9 @@ import {
   isMutatingCommand,
   isVerificationCommand,
   parseTranscript,
+  persistReceipt,
+  stripPluginNoise,
+  suggestVerificationCommands,
   detectPromiseNoAct
 } from '../scripts/verify-completion.mjs';
 
@@ -223,6 +227,10 @@ test('English and Japanese message corpora are selectable', () => {
     assert.equal(typeof corpus.gate.checks.verification, 'string');
     assert.equal(typeof corpus.gate.summaries.passed, 'string');
     assert.equal(typeof corpus.gate.blockInstruction, 'string');
+    assert.match(corpus.gate.suggestVerification, /\$\{commands\}/);
+    assert.equal(typeof corpus.receipt.title, 'string');
+    assert.match(corpus.receipt.savedMessage, /\$\{path\}/);
+    assert.match(corpus.sessionStart.compactReminder, /\$\{count\}/);
   }
 });
 
@@ -1695,4 +1703,201 @@ test('session start greets in the configured language', () => {
   });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Promise me\./);
+});
+
+test('verification suggestions come from real project manifests', () => {
+  const cwd = tmp();
+  fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ scripts: { test: 'node --test', lint: 'eslint .' } }));
+  assert.deepEqual(suggestVerificationCommands(cwd), ['npm test', 'npm run lint']);
+  fs.writeFileSync(path.join(cwd, 'pnpm-lock.yaml'), '');
+  assert.deepEqual(suggestVerificationCommands(cwd), ['pnpm test', 'pnpm run lint']);
+
+  const goDir = tmp();
+  fs.writeFileSync(path.join(goDir, 'go.mod'), 'module example.com/x');
+  fs.writeFileSync(path.join(goDir, 'Makefile'), 'test:\n\tgo test ./...\n');
+  assert.deepEqual(suggestVerificationCommands(goDir), ['go test ./...', 'make test']);
+
+  assert.deepEqual(suggestVerificationCommands(tmp()), []);
+});
+
+function editOnlyTranscript() {
+  return [
+    transcriptLine({ type: 'user', message: { role: 'user', content: '로그인 버그 고쳐줘' } }),
+    transcriptLine({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'e1', name: 'Edit', input: { file_path: 'src/login.js' } }] } }),
+    transcriptLine({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: '로그인 버그 수정 완료.' }] } })
+  ].join('\n');
+}
+
+test('report suggests the project verification command only when verification is missing', () => {
+  const cwd = tmp();
+  fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ scripts: { test: 'node --test' } }));
+
+  const blocked = buildVerificationReport({
+    transcriptText: editOnlyTranscript(),
+    state: { ...emptyState(), requirements: ['로그인 버그 고쳐줘'] },
+    cwd
+  });
+  assert.equal(blocked.ok, false);
+  assert.deepEqual(blocked.suggestedCommands, ['npm test']);
+
+  const passed = buildVerificationReport({
+    transcriptText: passingTranscript(),
+    state: { ...emptyState(), requirements: ['로그인 버그 고쳐줘'] },
+    cwd
+  });
+  assert.equal(passed.ok, true);
+  assert.deepEqual(passed.suggestedCommands, []);
+});
+
+test('Stop block reason names the concrete verification command', () => {
+  const cwd = tmp();
+  fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ scripts: { test: 'node --test' } }));
+  const transcriptFile = path.join(tmp(), 'transcript.jsonl');
+  fs.writeFileSync(transcriptFile, editOnlyTranscript());
+
+  const result = spawnSync('node', [path.join(scriptsDir, 'verify-completion.mjs')], {
+    input: JSON.stringify({ session_id: 'suggest-test', transcript_path: transcriptFile, hook_event_name: 'Stop', cwd }),
+    encoding: 'utf8',
+    env: { ...process.env, MENHERA_LOOP_DATA: tmp() }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const out = JSON.parse(result.stdout);
+  assert.equal(out.decision, 'block');
+  assert.match(out.reason, /npm test/);
+});
+
+test('evidence receipt lists requirements, files, and verification runs', () => {
+  const state = ledgerStateFixture();
+  const report = buildVerificationReport({
+    transcriptText: passingTranscript({ assistantText: '로그인 버그 수정 완료.' }),
+    state,
+    cwd: tmp()
+  });
+  assert.equal(report.ok, true);
+
+  const markdown = buildReceiptMarkdown(report, state);
+  assert.match(markdown, /- \[x\] 로그인 버그 고쳐줘/);
+  assert.match(markdown, /src\/login\.js \(code\)/);
+  assert.match(markdown, /✓ `npm test`/);
+
+  const env = { MENHERA_LOOP_DATA: tmp() };
+  const file = persistReceipt(markdown, env);
+  assert.equal(path.basename(file), 'last-receipt.md');
+  assert.match(fs.readFileSync(file, 'utf8'), /npm test/);
+});
+
+test('Stop pass writes last-receipt.md and mentions it in the system message', () => {
+  const dataDirPath = tmp();
+  const transcriptFile = path.join(tmp(), 'transcript.jsonl');
+  fs.writeFileSync(transcriptFile, passingTranscript());
+
+  const result = spawnSync('node', [path.join(scriptsDir, 'verify-completion.mjs')], {
+    input: JSON.stringify({ session_id: 'receipt-test', transcript_path: transcriptFile, hook_event_name: 'Stop', cwd: tmp() }),
+    encoding: 'utf8',
+    env: { ...process.env, MENHERA_LOOP_DATA: dataDirPath }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const out = JSON.parse(result.stdout);
+  assert.match(out.systemMessage, /last-receipt\.md/);
+  const receiptFile = path.join(dataDirPath, 'last-receipt.md');
+  assert.match(fs.readFileSync(receiptFile, 'utf8'), /로그인 버그 고쳐줘/);
+});
+
+test('suggestions survive corrupt manifests and fire on stale or red runs', () => {
+  const brokenCwd = tmp();
+  fs.writeFileSync(path.join(brokenCwd, 'package.json'), '{not json');
+  fs.writeFileSync(path.join(brokenCwd, 'go.mod'), 'module example.com/x');
+  assert.deepEqual(suggestVerificationCommands(brokenCwd), ['go test ./...']);
+
+  const cwd = tmp();
+  fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ scripts: { test: 'node --test' } }));
+  const stale = buildVerificationReport({
+    transcriptText: passingTranscript({ assistantText: '로그인 버그 수정 완료.' }),
+    state: ledgerStateFixture({ editAt: '2026-01-01T00:02:00.000Z', verifyAt: '2026-01-01T00:01:00.000Z' }),
+    cwd
+  });
+  assert.equal(stale.failedChecks.includes('verification'), true);
+  assert.deepEqual(stale.suggestedCommands, ['npm test']);
+
+  const red = buildVerificationReport({
+    transcriptText: passingTranscript({ assistantText: '로그인 버그 수정 완료.' }),
+    state: ledgerStateFixture({ success: false }),
+    cwd
+  });
+  assert.equal(red.failedChecks.includes('verification'), true);
+  assert.deepEqual(red.suggestedCommands, ['npm test']);
+});
+
+test('receipt redacts secrets, filters non-verification runs, and marks failures', () => {
+  const state = {
+    ...ledgerStateFixture(),
+    verificationRuns: [
+      { command: 'OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwx npm test', success: true, at: '2026-01-01T00:01:00.000Z' },
+      { command: 'git status', success: null, at: '2026-01-01T00:01:30.000Z' },
+      { command: 'npm test', success: false, at: '2026-01-01T00:02:00.000Z' }
+    ]
+  };
+  const report = buildVerificationReport({
+    transcriptText: passingTranscript({ assistantText: '로그인 버그 수정 완료.' }),
+    state,
+    cwd: tmp()
+  });
+  const markdown = buildReceiptMarkdown(report, state);
+  assert.doesNotMatch(markdown, /sk-abcdefghijklmnopqrstuvwx/);
+  assert.match(markdown, /\[REDACTED\]/);
+  assert.doesNotMatch(markdown, /git status/);
+  assert.match(markdown, /✗ `npm test`/);
+});
+
+test('receipt renders placeholders for a transcript-only pass', () => {
+  const report = buildVerificationReport({
+    transcriptText: passingTranscript(),
+    state: { ...emptyState(), requirements: ['로그인 버그 고쳐줘'] },
+    cwd: tmp()
+  });
+  assert.equal(report.ok, true);
+  const markdown = buildReceiptMarkdown(report, emptyState());
+  assert.match(markdown, /- \[x\] 로그인 버그 고쳐줘/);
+  assert.equal((markdown.match(/- —/g) || []).length, 2);
+});
+
+test('receipt titles never strip legitimate transcript lines', () => {
+  const domainLines = [
+    'I built the Evidence receipt component and wired it to checkout.',
+    '증거 영수증 화면에 합계를 표시하도록 요구사항을 정리했다.',
+    '証拠レシートのPDF出力を実装しました。'
+  ];
+  for (const line of domainLines) {
+    assert.equal(stripPluginNoise(line), line);
+  }
+  // The real receipt title line carries the menhera-loop marker and is stripped.
+  assert.equal(stripPluginNoise('# 증거 영수증 · menhera-loop'), '');
+  // Receipt strings still go through corpus validation.
+  assert.deepEqual(validateAllMessages(), []);
+});
+
+test('compact session start re-injects captured requirements without touching state', () => {
+  const dataDirPath = tmp();
+  const env = { MENHERA_LOOP_DATA: dataDirPath };
+  saveState('compact-test', { ...emptyState(), requirements: ['로그인 버그 고쳐줘', '테스트 추가해줘'], language: 'ko' }, env);
+
+  const result = spawnSync('node', [path.join(scriptsDir, 'session-start.mjs')], {
+    input: JSON.stringify({ session_id: 'compact-test', source: 'compact', cwd: tmp() }),
+    encoding: 'utf8',
+    env: { ...process.env, MENHERA_LOOP_DATA: dataDirPath }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /로그인 버그 고쳐줘/);
+  assert.match(result.stdout, /테스트 추가해줘/);
+  // Reminder + one line per requirement, and nothing else (no nags, no greetings).
+  assert.equal(result.stdout.trim().split('\n').length, 3);
+  assert.equal(loadState('compact-test', env).requirements.length, 2);
+
+  const silent = spawnSync('node', [path.join(scriptsDir, 'session-start.mjs')], {
+    input: JSON.stringify({ session_id: 'compact-empty', source: 'compact', cwd: tmp() }),
+    encoding: 'utf8',
+    env: { ...process.env, MENHERA_LOOP_DATA: dataDirPath }
+  });
+  assert.equal(silent.status, 0, silent.stderr);
+  assert.equal(silent.stdout.trim(), '');
 });

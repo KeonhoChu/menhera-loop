@@ -89,6 +89,9 @@ hook は自動で噛みつきますが、手動で呼べるスキルもありま
 | 編集ファイル内 TODO | そのまま流れる | `file:line` 付きで gate 失敗 |
 | ユーザー要件 | セッション中に薄れがち | prompt ごとに捕捉し Stop 時に証拠と照合 |
 | 空の完了宣言の連発 | 特に影響なし | 6 段階の感情 escalation + trust score 低下 |
+| 検証未実行の block | 曖昧な注意だけ | 実行すべきコマンドを block 理由に明記（`npm test` など） |
+| auto-compact 後 | 要件が静かに消える | 捕捉済み要件をコンテキストに再注入 |
+| 通過したとき | チャットの一文 | `~/.claude/menhera-loop/last-receipt.md` に証拠レシート |
 | 逃げ道 | — | 5 回 block 後、または本物の human-only blocker なら解放 |
 
 ## gate の流れ
@@ -111,6 +114,17 @@ Stop attempt
 `mix test`, `make test`, `vitest`, `jest`, `playwright`, `cypress`, `tsc --noEmit`,
 `eslint`, `ruff`, `mypy`, `pyright`, `phpunit`, `swift test`, `claude plugin validate`。
 独自 runner は `MENHERA_LOOP_TEST_PATTERNS='moon\\s+ci,just\\s+check'` で追加できます。
+
+検証未実行で block するときは、プロジェクトの manifest（`package.json` の
+scripts と lockfile、`Cargo.toml`、`go.mod`、`pyproject.toml`、`Makefile` など）を
+読んで、実行すべきコマンドそのものを block 理由に書きます。
+
+gate を green で通過するたびに、**証拠レシート**を
+`~/.claude/menhera-loop/last-receipt.md` に残します（編集ファイル、green だった
+検証実行、要件ごとの証拠対応）。commit message や PR にそのまま貼れます。
+
+また、長いセッションが auto-compact された直後には、捕捉済みの要件を
+コンテキストに再注入します。要件 drift を Stop で罰する前に、先回りで防ぎます。
 
 ## UI モードと言語
 

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { allPluginPhrases, calculateTrust, messageForRetry, messagesForLanguage, resolveMessageLanguage } from './menhera-ui.mjs';
-import { MAX_RETRIES, dataDir, loadState, recordGateOutcome, saveState } from './state.mjs';
+import { MAX_RETRIES, atomicWriteFileSync, dataDir, loadState, recordGateOutcome, redactSecrets, saveState } from './state.mjs';
 
 const TEST_COMMAND_PATTERNS = [
   /npm\s+run\s+(?:validate|test|lint|build)\b/i,
@@ -210,6 +210,8 @@ export function buildVerificationReport(input = {}) {
       missingEvidence: [],
       unverifiedRequirements: [],
       failedChecks: [],
+      requirements: [],
+      suggestedCommands: [],
       requiresHumanInput,
       summary: configOnly ? messages.gate.summaries.configOnly : messages.gate.summaries.noWork,
       language
@@ -235,6 +237,9 @@ export function buildVerificationReport(input = {}) {
 
   const exhausted = untriedChecks.length === 0 && missingEvidence.length === 0 && unverifiedRequirements.length === 0;
   const ok = exhausted && failedChecks.length === 0;
+  // Covers both "never ran" and "stale since last edit" — the two cases where
+  // naming the project's own command shortens the retry loop.
+  const suggestedCommands = missingEvidence.includes('verification') ? suggestVerificationCommands(cwd) : [];
   const trust = calculateTrust({
     retryCount: state.retryCount,
     falseCompletionClaims: state.falseCompletionClaims,
@@ -256,9 +261,55 @@ export function buildVerificationReport(input = {}) {
     missingEvidence,
     unverifiedRequirements,
     failedChecks,
+    requirements,
+    suggestedCommands,
     requiresHumanInput,
     summary: summarize({ ok, missingEvidence, untriedChecks, unverifiedRequirements, failedChecks, requiresHumanInput }, messages)
   };
+}
+
+function fill(template, values) {
+  return Object.entries(values).reduce((text, [key, value]) => text.replaceAll(`\${${key}}`, String(value)), template);
+}
+
+// The evidence receipt is the user-facing payoff of a strong_ok pass: the
+// ledger's edited files, verification runs, and requirement coverage in a
+// form that can go straight into a commit message or PR body.
+export function buildReceiptMarkdown(report, state = {}, { now = new Date(), env = process.env } = {}) {
+  const messages = messagesForLanguage(report.language || 'ko');
+  const unverified = new Set(report.unverifiedRequirements || []);
+  const requirements = report.requirements || [];
+  const editedFiles = (state.editedFiles || []).map(file => (typeof file === 'string' ? { path: file } : file)).filter(file => file?.path);
+  const runs = (state.verificationRuns || []).filter(run => isVerificationCommand(run?.command || '', env));
+  const empty = ['- —'];
+  return [
+    `# ${messages.receipt.title} · menhera-loop`,
+    '',
+    `- ${now.toISOString()}`,
+    `- verdict: ${report.verdict} · trust: ${report.trust}%`,
+    '',
+    `## ${messages.gate.checks.requirements}`,
+    // The receipt is meant to be pasted into commits/PRs, so requirement text
+    // (raw user input) and commands (may carry env-var prefixes) get redacted.
+    ...(requirements.length ? requirements.map(requirement => `- [${unverified.has(requirement) ? ' ' : 'x'}] ${redactSecrets(requirement)}`) : empty),
+    '',
+    `## ${messages.gate.checks.changes}`,
+    ...(editedFiles.length ? editedFiles.map(file => `- ${file.path}${file.kind ? ` (${file.kind})` : ''}`) : empty),
+    '',
+    `## ${messages.gate.checks.verification}`,
+    ...(runs.length ? runs.map(run => `- ${run.success === false ? '✗' : '✓'} \`${redactSecrets(run.command)}\`${run.at ? ` — ${run.at}` : ''}`) : empty),
+    ''
+  ].join('\n');
+}
+
+export function persistReceipt(markdown, env = process.env) {
+  try {
+    const file = path.join(dataDir(env), 'last-receipt.md');
+    atomicWriteFileSync(file, markdown.endsWith('\n') ? markdown : `${markdown}\n`);
+    return file;
+  } catch {
+    return null;
+  }
 }
 
 function evaluateCheck(check, { transcript, requirements, requiresHumanInput, cwd, env = process.env }) {
@@ -356,6 +407,47 @@ function testCommandPatterns(env = process.env) {
     })
     .filter(Boolean);
   return [...TEST_COMMAND_PATTERNS, ...extra];
+}
+
+// Turn "verification not run" into an actionable block: read the project's
+// own manifests and name the exact command to run. Suggestions only — the
+// gate's pass/fail arithmetic never depends on them.
+export function suggestVerificationCommands(cwd) {
+  const base = cwd || process.cwd();
+  const has = name => {
+    try {
+      return fs.existsSync(path.join(base, name));
+    } catch {
+      return false;
+    }
+  };
+  const suggestions = [];
+  try {
+    if (has('package.json')) {
+      const pkg = JSON.parse(fs.readFileSync(path.join(base, 'package.json'), 'utf8'));
+      const scripts = pkg.scripts || {};
+      const pm = has('pnpm-lock.yaml') ? 'pnpm' : has('yarn.lock') ? 'yarn' : (has('bun.lockb') || has('bun.lock')) ? 'bun' : 'npm';
+      for (const name of ['test', 'lint', 'build']) {
+        if (scripts[name]) suggestions.push(name === 'test' ? `${pm} test` : `${pm} run ${name}`);
+      }
+    }
+  } catch {
+    // unreadable package.json — other manifests may still match
+  }
+  if (has('Cargo.toml')) suggestions.push('cargo test');
+  if (has('go.mod')) suggestions.push('go test ./...');
+  if (has('pyproject.toml') || has('pytest.ini')) suggestions.push('pytest');
+  if (has('mix.exs')) suggestions.push('mix test');
+  if (has('gradlew')) suggestions.push('./gradlew test');
+  else if (has('pom.xml')) suggestions.push('mvn test');
+  try {
+    if (has('Makefile') && /^test\s*:/m.test(fs.readFileSync(path.join(base, 'Makefile'), 'utf8'))) {
+      suggestions.push('make test');
+    }
+  } catch {
+    // unreadable Makefile — skip
+  }
+  return [...new Set(suggestions)].slice(0, 3);
 }
 
 export function classifyPathKind(filePath) {
@@ -702,7 +794,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (report.verdict === 'strong_ok') {
       // Long-term trust: chat-only/config-only sessions never move it.
       recordGateOutcome({ outcome: 'pass', firstTry: state.retryCount === 0, sessionId });
-      console.log(JSON.stringify({ systemMessage: `menhera-loop trust ${report.trust}% · ${report.retryMessage}` }));
+      const receiptFile = persistReceipt(buildReceiptMarkdown(report, state));
+      const receiptNote = receiptFile
+        ? ` · ${fill(messagesForLanguage(report.language).receipt.savedMessage, { path: receiptFile })}`
+        : '';
+      console.log(JSON.stringify({ systemMessage: `menhera-loop trust ${report.trust}% · ${report.retryMessage}${receiptNote}` }));
     }
     process.exit(0);
   }
@@ -736,6 +832,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     `trust: ${report.trust}%`,
     `미충족 게이트: ${report.summary}`,
     ...report.checks.filter(check => check.status !== 'pass').map(check => `- ${check.label}: ${check.reason}`),
+    ...(report.suggestedCommands.length
+      ? [fill(localized.gate.suggestVerification, { commands: report.suggestedCommands.join(' / ') })]
+      : []),
     localized.gate.blockInstruction,
     // Last block before the cap releases: tell the model — while it can still act
     // on it — to disclose the unverified finish in its final report if it gives up.

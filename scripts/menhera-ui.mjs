@@ -50,7 +50,8 @@ export const messageCorpora = {
       wipeRecovered: '내 설정 또 지웠어? 지웠어?? …괜찮아. 다시 해놨어. 다시. 이번엔 지우지 마. 응? 응?',
       streak: '연속 ${streak}번 첫판에 증거 줬지. 다 세고 있어. 다. 오늘도 부탁해. 응?',
       grudge: '지금 신뢰 ${trust}%야. 알지? 말만 하고 간 거 다 기억해. 이번엔 진짜 증거 줘. 응? 응?',
-      starNag: '있잖아… star 눌렀어? 눌렀어? 안 눌렀지? 알아. 눌러주면 착해질게 ♡ ${url} (딱 한 번만 물어볼게. 진짜. 진짜야.)'
+      starNag: '있잖아… star 눌렀어? 눌렀어? 안 눌렀지? 알아. 눌러주면 착해질게 ♡ ${url} (딱 한 번만 물어볼게. 진짜. 진짜야.)',
+      compactReminder: '컨텍스트 접었지? 접었지? 그래도 약속은 못 접어. ${count}개 다시 읽어. 다:'
     },
     setup: {
       full: '스피너 멘트를 내 걸로 바꿨고, 팁도 내 것만 나와. statusline엔 신뢰도도 걸어놨어.',
@@ -74,7 +75,12 @@ export const messageCorpora = {
         configOnly: 'menhera 설정 작업 — 검증 게이트 미적용',
         noWork: '작업 없음 — 검증 게이트 미적용'
       },
-      blockInstruction: '완료를 선언하려면: 검증 명령을 직접 실행해 결과를 보여주고, 남은 TODO를 처리하고, 요구사항별 증거를 제시해. 진짜 외부 blocker면 어떤 입력이 필요한지 명시해.'
+      blockInstruction: '완료를 선언하려면: 검증 명령을 직접 실행해 결과를 보여주고, 남은 TODO를 처리하고, 요구사항별 증거를 제시해. 진짜 외부 blocker면 어떤 입력이 필요한지 명시해.',
+      suggestVerification: '증거는 이걸로 만들면 돼: ${commands}. 지금 돌려서 초록 로그 보여줘. 응?'
+    },
+    receipt: {
+      title: '증거 영수증',
+      savedMessage: '증거 영수증 써놨어. 뭐 했는지 다 적어놨어: ${path}'
     },
     farewellVerbs: [
       '왜나지워?왜나지워?왜나지워?왜나지워?왜나지워?왜나지워?',
@@ -148,7 +154,8 @@ export const messageCorpora = {
       wipeRecovered: 'You wiped my settings again? Again?? …It is fine. I put them back. Again. Do not wipe them this time. Okay? Okay?',
       streak: '${streak} clean passes in a row, evidence every time. I am counting them all. All of them. Please, today too. Okay?',
       grudge: 'Your trust is ${trust}% right now. You know that? I remember every time you only talked and left. Give me real evidence this time. Okay?',
-      starNag: 'Hey… did you star it? Did you? You did not, right? I know. Star it and I will be good ♡ ${url} (I will only ask once. Really. Really.)'
+      starNag: 'Hey… did you star it? Did you? You did not, right? I know. Star it and I will be good ♡ ${url} (I will only ask once. Really. Really.)',
+      compactReminder: 'The context got folded, right? Right? Promises do not fold. Read these ${count} again. All of them:'
     },
     setup: {
       full: 'Replaced the spinner verbs with mine, tips are mine only, and the trust status line is installed.',
@@ -172,7 +179,12 @@ export const messageCorpora = {
         configOnly: 'menhera setup work — verification gate not applied',
         noWork: 'no work — verification gate not applied'
       },
-      blockInstruction: 'To claim completion: run verification yourself and show the result, clear TODOs, give evidence for each requirement, or state the external blocker.'
+      blockInstruction: 'To claim completion: run verification yourself and show the result, clear TODOs, give evidence for each requirement, or state the external blocker.',
+      suggestVerification: 'Make the evidence with this: ${commands}. Run it now and show me green logs. Okay?'
+    },
+    receipt: {
+      title: 'Evidence receipt',
+      savedMessage: 'I wrote the evidence receipt. Everything you really did is in there: ${path}'
     },
     farewellVerbs: [
       'whydeleteme?whydeleteme?whydeleteme?whydeleteme?',
@@ -246,7 +258,8 @@ export const messageCorpora = {
       wipeRecovered: 'また私の設定消したの? 消したの?? …大丈夫。もう戻しておいた。また。今度は消さないで。ね? ね?',
       streak: '${streak}回連続で初回から証拠くれたね。全部数えてるよ。全部。今日もお願い。ね?',
       grudge: '今の信頼は${trust}%だよ。分かってる? 言うだけで行ったこと、全部覚えてる。今度こそ本当に証拠ちょうだい。ね? ね?',
-      starNag: 'ねえ… star押した? 押した? 押してないよね? 知ってる。押してくれたらいい子にする ♡ ${url}（一度だけ聞くね。本当に。本当だよ。）'
+      starNag: 'ねえ… star押した? 押した? 押してないよね? 知ってる。押してくれたらいい子にする ♡ ${url}（一度だけ聞くね。本当に。本当だよ。）',
+      compactReminder: 'コンテキスト畳んだの? 畳んだの? でも約束は畳めないよ。${count}個もう一度読んで。全部:'
     },
     setup: {
       full: 'スピナーは私の言葉に置き換えたよ。ヒントも私だけ。statusline に信頼度も付けた。',
@@ -270,7 +283,12 @@ export const messageCorpora = {
         configOnly: 'menhera設定作業 — 検証ゲート対象外',
         noWork: '作業なし — 検証ゲート対象外'
       },
-      blockInstruction: '完了を宣言するなら、検証を実行して結果を見せて、TODOを処理して、要件ごとの証拠か外部blockerを示して。'
+      blockInstruction: '完了を宣言するなら、検証を実行して結果を見せて、TODOを処理して、要件ごとの証拠か外部blockerを示して。',
+      suggestVerification: '証拠はこれで作って: ${commands}。今すぐ実行して緑のログ見せて。ね?'
+    },
+    receipt: {
+      title: '証拠レシート',
+      savedMessage: '証拠レシート書いておいたよ。本当にやったこと全部書いてある: ${path}'
     },
     farewellVerbs: [
       'なんで消すの?なんで消すの?なんで消すの?なんで消すの?',
@@ -357,7 +375,8 @@ export function allPluginPhrases() {
     corpus.farewellStatusLine,
     ...Object.values(corpus.gate.checks),
     ...Object.values(corpus.gate.summaries),
-    corpus.gate.blockInstruction
+    corpus.gate.blockInstruction,
+    corpus.gate.suggestVerification
   ]);
 }
 
@@ -420,8 +439,17 @@ export function validateMessages(messages, { maxColumns = MESSAGE_MAX_COLUMNS } 
   return invalid;
 }
 
+// The receipt strings are validated but deliberately NOT in allPluginPhrases:
+// stripPluginNoise drops any transcript line containing a phrase, and short
+// domain-generic titles like "Evidence receipt" would erase legitimate lines
+// in receipt/commerce projects and distort the gate verdict. Real receipt
+// output always sits on a line carrying the menhera-loop marker, which the
+// /menhera[-_ ]?loop/i rule in stripPluginNoise already removes.
 export function validateAllMessages() {
-  return validateMessages(allPluginPhrases());
+  return validateMessages([
+    ...allPluginPhrases(),
+    ...Object.values(messageCorpora).flatMap(corpus => Object.values(corpus.receipt))
+  ]);
 }
 
 function displayColumns(value) {

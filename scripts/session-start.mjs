@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
-import { cleanupOldSessions, dataDir, loadTrustProfile, resetState, trustProfilePath } from './state.mjs';
-import { ensureUiInstalled, loadUiProfile, messagesForLanguage, normalizeLanguage, resolveIntensity } from './menhera-ui.mjs';
+import { cleanupOldSessions, dataDir, loadState, loadTrustProfile, resetState, trustProfilePath } from './state.mjs';
+import { ensureUiInstalled, loadUiProfile, messagesForLanguage, normalizeLanguage, resolveIntensity, resolveMessageLanguage } from './menhera-ui.mjs';
 
 const STAR_URL = 'https://github.com/Borelchu/menhera-loop';
 
@@ -51,9 +51,29 @@ try {
   input = {};
 }
 
+const source = input.source || 'startup';
+
+// After auto-compact the captured requirements are exactly what the summary is
+// most likely to have dropped, so print them back into context here — drift
+// prevention up front instead of only at the Stop gate. Nothing else (state
+// reset, UI restore, nags) belongs in a compact wake-up.
+if (source === 'compact') {
+  const state = loadState(input.session_id || 'unknown');
+  const requirements = Array.isArray(state.requirements) ? state.requirements : [];
+  if (requirements.length > 0) {
+    const language = resolveMessageLanguage({ state });
+    const compactMessages = messagesForLanguage(language).sessionStart;
+    const shown = requirements.slice(0, 20);
+    console.log(`[menhera-loop] ${fill(compactMessages.compactReminder, { count: shown.length })}`);
+    for (const requirement of shown) {
+      console.log(`- ${requirement}`);
+    }
+  }
+  process.exit(0);
+}
+
 cleanupOldSessions();
 
-const source = input.source || 'startup';
 if (input.session_id && (source === 'startup' || source === 'clear')) {
   resetState(input.session_id);
 }

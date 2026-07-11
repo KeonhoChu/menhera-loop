@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.6.0
+
+Giving-back release: she stops only complaining and starts handing you things — the block names the command to run, the pass leaves a receipt, and compaction can no longer erase your promises.
+
+### Features
+- Actionable blocks: when the verification gate is unmet (never ran, stale since the last edit, or red), the block reason names the project's own command to run — detected from `package.json` scripts + lockfile (npm/pnpm/yarn/bun), `Cargo.toml`, `go.mod`, `pyproject.toml`/`pytest.ini`, `mix.exs`, `gradlew`/`pom.xml`, and a `Makefile` test target — localized in ko/en/ja. Suggestions never affect the pass/fail arithmetic.
+- Evidence receipt: a `strong_ok` Stop writes `~/.claude/menhera-loop/last-receipt.md` — edited files, green verification runs, and per-requirement coverage — and the success message points at it. Ready to paste into a commit message or PR body.
+- Compaction survival: SessionStart now also fires on `compact` and re-injects every captured requirement into context, so requirement drift is prevented up front instead of only caught at Stop. State is never reset on compact.
+
+### Fixes (pre-release review)
+- The receipt titles ("증거 영수증" / "Evidence receipt" / "証拠レシート") are excluded from the transcript noise filter — registering such short domain-generic phrases would have silently stripped legitimate lines in receipt/commerce projects and distorted gate verdicts. The strings still pass corpus validation.
+- Receipt content is redacted (requirement text and commands can carry secrets like env-var prefixes) and written atomically; `redactSecrets` moved to `state.mjs` and is re-exported from `track-event.mjs`.
+- The compact reminder count matches the number of requirement lines actually printed (20-line cap).
+- Tests pin the review-found edges: corrupt `package.json` falls through to other manifests, suggestions fire on stale and red runs (not just never-ran), the empty-ledger receipt fallback, receipt run filtering/redaction/failure marks, new corpus keys exist with placeholders in all three languages, and the compact wake-up prints nothing but the reminder.
+
 ## v0.5.2
 
 Intensity release: soft mode lowers her voice, not the gate — and setup finally explains what it did.
